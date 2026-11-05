@@ -154,7 +154,7 @@ function buildDemo(today) {
   const orgs = ORGS.map(o => o.code);
   for (let i = 0; i < 10; i++) add('신입 공채', '26하반기 1기', -44, orgs[i % 7], '사원');
   for (let i = 0; i < 8; i++) add('신입 공채', '26하반기 2기', 9, orgs[(i + 3) % 7], '사원');
-  [[-79, 'BSL'], [-26, 'FIN'], [-9, 'MKT'], [-3, 'HRM'], [2, 'HRM'], [5, 'DXO'], [13, 'FRD']].forEach(([o, g]) => add('수시', '', o, g, '사원'));
+  [[-79, 'BSL'], [-32, 'FIN'], [-9, 'MKT'], [-3, 'HRM'], [2, 'HRM'], [5, 'DXO'], [13, 'FRD']].forEach(([o, g]) => add('수시', '', o, g, '사원'));
   [[-53, 'FIN', '과장'], [-16, 'DXO', '대리'], [4, 'PEN', '과장'], [20, 'BSL', '차장']].forEach(([o, g, rk]) => add('경력', '', o, g, rk));
   [[-97, 'FRD', '수시'], [-104, 'BSL', '경력'], [-112, 'MKT', '신입 공채'], [-118, 'FIN', '신입 공채'], [-133, 'PEN', '수시']]
     .forEach(([o, g, ty]) => add(ty, ty === '신입 공채' ? '26상반기' : '', o, g, ty === '경력' ? '대리' : '사원'));
@@ -194,6 +194,7 @@ function buildDemo(today) {
       const k = D.diff(today, sendDay);
       if (k < 0 || (h.leave && D.n(h.leave) < D.n(sendDay))) return;
       if (k <= 2) return; // 최근 도래한 사람은 아직 발송 전 → '발송 대기'에 뜬다
+      if (s.id === 'S30' && [7, 8, 9].includes(hires.indexOf(h))) return; // 1기 중 세 명은 30일 설문을 아직 못 보냄 → '보낼 대상'에 뜬다
       const send = { id: 'SND-' + (sends.length + 1), survey: s.id, key: h.key, sentAt: sendDay, token: (Math.floor(r() * 1e10)).toString(36) + sends.length, respondedAt: '', via: '' };
       sends.push(send);
       const isHard = hard.has(h.key);
