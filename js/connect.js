@@ -1,0 +1,270 @@
+/* 외부 연결 — Gmail 발송, Slack 채널 알림, Google 시트·API에서 가져오기
+   연결 정보는 이 브라우저(localStorage)에만 저장한다. 서버가 없으므로 어디에도 보내지 않는다.
+   예시 데이터 초기화와 따로 저장해서, 데이터를 되돌려도 연결은 남는다. */
+const CONN_KEY = 'onboarding-connections';
+const CONN = (() => { try { return JSON.parse(localStorage.getItem(CONN_KEY)) || {}; } catch (e) { return {}; } })();
+CONN.google = CONN.google || { clientId: '' };
+CONN.slack = CONN.slack || {};       // { it, ga } : Incoming Webhook 주소
+CONN.mail = CONN.mail || {};         // { it, ga } : 담당 부서 메일 주소
+CONN.sources = CONN.sources || {};   // { ats: { kind: 'sheet'|'api', url, header, path, at } }
+function saveConn() { try { localStorage.setItem(CONN_KEY, JSON.stringify(CONN)); } catch (e) { /* 저장 불가 */ } }
+
+/* ───────── Google 로그인 (Google Identity Services, 무료) ───────── */
+const G_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/spreadsheets.readonly';
+let G_TOKEN = null;
+function loadGis() {
+  if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+  return new Promise((ok, no) => {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.onload = ok; s.onerror = () => no(new Error('Google 로그인 스크립트를 불러오지 못했습니다. 인터넷 연결을 확인하세요.'));
+    document.head.appendChild(s);
+  });
+}
+if (CONN.google.clientId) loadGis().catch(() => {}); // 버튼을 누를 때 팝업이 막히지 않도록 미리 불러 둔다
+
+function googleToken(force) {
+  if (!force && G_TOKEN && G_TOKEN.exp > Date.now() + 60000) return Promise.resolve(G_TOKEN.token);
+  if (!CONN.google.clientId) return Promise.reject(new Error('Google이 연결되어 있지 않습니다. 연결 설정에서 Client ID를 넣어 주세요.'));
+  return loadGis().then(() => new Promise((ok, no) => {
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: CONN.google.clientId, scope: G_SCOPES,
+      callback: r => {
+        if (r.error) return no(new Error('Google 연결이 거절되었습니다 (' + r.error + ').'));
+        G_TOKEN = { token: r.access_token, exp: Date.now() + Number(r.expires_in || 3600) * 1000 };
+        CONN.google.ok = TODAY; saveConn(); ok(r.access_token);
+      },
+      error_callback: e => no(new Error(e && e.type === 'popup_closed' ? 'Google 로그인 창이 닫혔습니다.' : 'Google 로그인 창을 열지 못했습니다. 팝업 차단을 풀어 주세요.')),
+    });
+    client.requestAccessToken();
+  }));
+}
+
+/* ───────── 보내기 ───────── */
+const b64 = s => btoa(unescape(encodeURIComponent(s)));
+const mimeWord = s => '=?UTF-8?B?' + b64(s) + '?=';
+function gmailSend({ to, bcc, subject, body }) {
+  const head = [];
+  if (to) head.push('To: ' + to);
+  if (bcc) head.push('Bcc: ' + bcc);
+  head.push('Subject: ' + mimeWord(subject), 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64');
+  // 머리글은 ASCII(제목은 MIME 인코딩), 본문은 base64 → 메시지 전체를 다시 base64url로
+  const raw = btoa(head.join('\r\n') + '\r\n\r\n' + b64(body).replace(/.{76}/g, '$&\r\n'));
+  const url = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
+  return googleToken().then(token => fetch(url, { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: raw.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') }) }))
+    .then(r => r.ok ? r.json() : r.json().catch(() => ({})).then(j => { throw new Error('Gmail이 보내지 않았습니다: ' + ((j.error && j.error.message) || r.status)); }));
+}
+function slackSend(url, text) {
+  // Slack 웹훅은 브라우저 응답을 막아 두어 결과를 읽을 수 없다(no-cors). 전송 요청까지만 확인한다.
+  return fetch(url, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ text }) });
+}
+const mailtoUrl = ({ to, bcc, subject, body }) => 'mailto:' + encodeURIComponent(to || '').replace(/%40/g, '@').replace(/%2C/g, ',') + '?' +
+  [bcc ? 'bcc=' + encodeURIComponent(bcc) : '', 'subject=' + encodeURIComponent(subject), 'body=' + encodeURIComponent(body)].filter(Boolean).join('&');
+
+/* 보내기 창: 받는 곳과 채널을 고르고, 내용을 고친 뒤 보낸다
+   opt = { title, to, bcc, subject, body, slack: 'it'|'ga', onSent(via) } */
+function openCompose(opt) {
+  const ch = [];
+  if (CONN.google.clientId) ch.push(['gmail', 'Gmail로 보내기']);
+  if (opt.slack && CONN.slack[opt.slack]) ch.push(['slack', 'Slack 채널에 올리기']);
+  ch.push(['mailto', '메일 앱에서 열기'], ['copy', '복사만 하기']);
+  const def = ch[0][0];
+  const demo = /@mail-demo\.kr/.test((opt.to || '') + (opt.bcc || ''));
+  modal(esc(opt.title), `
+    <div class="ch-pick" role="radiogroup" aria-label="보내는 방법">${ch.map(([k, l]) => `<label class="ch ${k === def ? 'on' : ''}"><input type="radio" name="ch" value="${k}" ${k === def ? 'checked' : ''}>${l}</label>`).join('')}</div>
+    ${CONN.google.clientId ? '' : `<p class="m-note">Gmail이나 Slack으로 바로 보내려면 <a href="#connect">연결 설정</a>에서 연결하세요. 지금은 메일 앱에서 열거나 복사할 수 있습니다.</p>`}
+    <div class="ch-mail">
+      <label class="fld"><span>받는 사람</span><input name="to" value="${esc(opt.to || '')}" placeholder="이름@회사.com, 여러 명은 쉼표로"></label>
+      ${opt.bcc !== undefined ? `<label class="fld"><span>숨은 참조</span><input name="bcc" value="${esc(opt.bcc || '')}"></label>` : ''}
+      <label class="fld"><span>제목</span><input name="subject" value="${esc(opt.subject)}"></label>
+    </div>
+    <label class="fld"><span>내용</span><textarea name="body" rows="10">${esc(opt.body)}</textarea></label>
+    ${demo ? '<p class="m-note">예시 데이터의 주소(@mail-demo.kr)는 가짜라 실제로 보내면 반송됩니다. 시험할 때는 받는 사람을 본인 주소로 바꾸세요.</p>' : ''}`,
+  (fd, f) => {
+    const via = fd.get('ch'), m = { to: String(fd.get('to') || '').trim(), bcc: String(fd.get('bcc') || '').trim(), subject: String(fd.get('subject') || ''), body: String(fd.get('body') || '') };
+    if (via === 'copy') { copy(m.subject + '\n\n' + m.body); return; }
+    if (via === 'mailto') { location.href = mailtoUrl(m); opt.onSent && opt.onSent('메일 앱'); return; }
+    if (via === 'gmail' && !m.to && !m.bcc) return '받는 사람을 넣어 주세요.';
+    const btn = f.querySelector('.btn.primary'); btn.disabled = true; btn.textContent = '보내는 중…';
+    const job = via === 'gmail' ? gmailSend(m) : slackSend(CONN.slack[opt.slack], `*${m.subject}*\n${m.body}`);
+    job.then(() => { $('#modal').close(); toast(via === 'gmail' ? 'Gmail로 보냈습니다.' : 'Slack 채널로 보냈습니다.'); opt.onSent && opt.onSent(via === 'gmail' ? 'Gmail' : 'Slack'); })
+      .catch(e => { btn.disabled = false; btn.textContent = '보내기'; let p = f.querySelector('.m-err'); if (!p) { p = document.createElement('p'); p.className = 'm-err'; f.querySelector('.m-act').before(p); } p.textContent = e.message; });
+    return null;
+  }, '보내기', true);
+  const f = $('#modal form');
+  const sync = () => { const v = f.querySelector('[name=ch]:checked').value; f.querySelectorAll('.ch').forEach(l => l.classList.toggle('on', l.querySelector('input').checked)); f.querySelector('.ch-mail').hidden = v === 'slack'; f.querySelector('.btn.primary').textContent = v === 'copy' ? '복사하기' : v === 'mailto' ? '메일 앱 열기' : '보내기'; };
+  f.addEventListener('change', e => { if (e.target.name === 'ch') sync(); });
+  sync();
+}
+
+/* 요청 보내기: 받는 곳(rid)에 맞춰 받는 사람·제목·내용을 채운다 */
+function askCompose(rid) {
+  const dv = derive();
+  const items = S.tasks.filter(t => { const s = dv.st.get(t.id), h = hireOf(t.key); return h && isActive(h) && (s === '지연' || s === '문제' || (s === '진행' && D.diff(t.due, TODAY) <= 2)) && recipientOf(t, h).id === rid; });
+  if (!items.length) return;
+  const h0 = hireOf(items[0].key), r = recipientOf(items[0], h0);
+  let body = requestText(rid), subject, to = '', bcc, slack;
+  if (rid === 'LMS') {
+    const lines = body.split('\n'); subject = lines[0];
+    body = lines.slice(2).filter(l => !l.startsWith('받는 사람(숨은 참조)')).join('\n').trim();
+    bcc = [...new Set(items.map(t => hireOf(t.key).email))].join(', ');
+  } else if (rid.startsWith('n:')) { subject = `[입사 준비] ${h0.name} 님, 확인 부탁드립니다`; to = h0.email; }
+  else if (rid.startsWith('m:')) { subject = `[온보딩] 새 팀원 준비 확인 부탁드립니다`; to = h0.mgr; }
+  else { slack = r.id === 'IT' ? 'it' : 'ga'; to = CONN.mail[slack] || ''; subject = `[입사 준비] 신규 입사자 ${items.length}건 확인 부탁드립니다`; }
+  openCompose({ title: r.label + '에게 요청', to, bcc, subject, body, slack, onSent: via => { (S.asks = S.asks || []).push({ rid, at: TODAY, via }); save(); } });
+}
+const lastAsk = rid => (S.asks || []).filter(a => a.rid === rid).slice(-1)[0];
+
+/* 설문: 사람마다 링크가 다른 메일을 Gmail로 한 번에 보낸다 */
+function surveyGmail(rows, mail, sends, done) {
+  const [subject, , ...rest] = mail.split('\n'); const tpl = rest.join('\n');
+  let n = 0;
+  const one = i => i >= rows.length ? Promise.resolve() :
+    gmailSend({ to: rows[i].to, subject, body: tpl.replace('{이름}', rows[i].h.name).replace('{링크}', rows[i].url) }).then(() => { sends[i].via = 'Gmail'; n++; return one(i + 1); });
+  return one(0).then(() => { persist(); done(n); }, e => { persist(); throw new Error(`${n}명까지 보냈습니다. ` + e.message); });
+}
+
+/* ───────── 가져오기: Google 시트·API ───────── */
+function sheetIds(url) {
+  const m = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/.exec(url); const g = /[#&?]gid=(\d+)/.exec(url);
+  return m ? { id: m[1], gid: g ? g[1] : '0' } : null;
+}
+function fetchSheet(url) {
+  const ids = sheetIds(url);
+  if (!ids) return Promise.reject(new Error('Google 시트 주소가 아닙니다. 시트를 열었을 때 주소창의 주소를 그대로 붙여넣으세요.'));
+  // 1) "링크가 있는 모든 사용자" 공유 시트는 로그인 없이 CSV로 읽는다
+  const pub = `https://docs.google.com/spreadsheets/d/${ids.id}/gviz/tq?tqx=out:csv&gid=${ids.gid}`;
+  return fetch(pub).then(r => { if (!r.ok) throw new Error('private'); return r.text(); }).then(t => { if (/^\s*<!DOCTYPE|<html/i.test(t)) throw new Error('private'); return parseText(t); })
+    .catch(() => {
+      // 2) 공유되지 않은 시트는 Google 연결(Sheets API)로 읽는다
+      if (!CONN.google.clientId) throw new Error('시트를 읽을 수 없습니다. 시트를 "링크가 있는 모든 사용자"로 공유하거나, 연결 설정에서 Google을 연결하세요.');
+      return googleToken().then(tk => {
+        const api = `https://sheets.googleapis.com/v4/spreadsheets/${ids.id}`, H = { headers: { Authorization: 'Bearer ' + tk } };
+        return fetch(api + '?fields=sheets.properties', H).then(r => r.json()).then(j => {
+          if (j.error) throw new Error('Google 시트를 읽지 못했습니다: ' + j.error.message);
+          const sh = (j.sheets || []).find(s => String(s.properties.sheetId) === ids.gid) || j.sheets[0];
+          return fetch(api + '/values/' + encodeURIComponent(sh.properties.title) + '?valueRenderOption=FORMATTED_VALUE', H).then(r => r.json());
+        }).then(j => { if (j.error) throw new Error('Google 시트를 읽지 못했습니다: ' + j.error.message); return j.values || []; });
+      });
+    });
+}
+function fetchApi(cfg) {
+  const headers = {};
+  String(cfg.header || '').split('\n').forEach(l => { const i = l.indexOf(':'); if (i > 0) headers[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
+  return fetch(cfg.url, { headers })
+    .catch(() => { throw new Error('API에 접속하지 못했습니다. 주소가 맞는지, 이 시스템이 브라우저 호출(CORS)을 허용하는지 확인하세요. 막혀 있다면 시스템 관리자에게 이 대시보드 주소(' + location.origin + ') 허용을 요청하거나, Google 시트로 내보내 연결하세요.'); })
+    .then(r => { if (!r.ok) throw new Error('API가 오류를 돌려줬습니다 (' + r.status + '). 주소와 인증 헤더를 확인하세요.'); return r.json(); })
+    .then(j => {
+      let list = j;
+      String(cfg.path || '').split('.').filter(Boolean).forEach(k => { list = list == null ? list : list[k]; });
+      if (!Array.isArray(list)) throw new Error('응답에서 목록을 찾지 못했습니다. "목록 위치"에 목록이 들어 있는 항목 이름(예: data 또는 data.items)을 넣어 주세요.');
+      if (!list.length) return [];
+      if (Array.isArray(list[0])) return list;
+      const keys = [...new Set(list.flatMap(o => Object.keys(o || {})))];
+      return [keys, ...list.map(o => keys.map(k => o[k] == null ? '' : typeof o[k] === 'object' ? JSON.stringify(o[k]) : o[k]))];
+    });
+}
+function pullSource(src, cfg, keep) {
+  const job = cfg.kind === 'api' ? fetchApi(cfg) : fetchSheet(cfg.url);
+  toast('불러오는 중입니다…');
+  return job.then(grid => {
+    // 시트 오른쪽의 빈 열은 잘라 낸다
+    let w = Math.max(0, ...grid.map(r => r.length));
+    while (w > 0 && grid.every(r => String(r[w - 1] == null ? '' : r[w - 1]).trim() === '')) w--;
+    grid = grid.map(r => r.slice(0, w));
+    if (keep) { CONN.sources[src] = Object.assign({}, cfg, { at: TODAY }); saveConn(); }
+    loadGrid(grid, cfg.kind === 'api' ? 'API' : 'Google 시트');
+  }).catch(e => modal('가져오지 못했습니다', `<p>${esc(e.message)}</p>`, null, null));
+}
+
+function apiPanel(src) {
+  const c = CONN.sources[src];
+  if (c) return `<div class="linked"><div><b>${c.kind === 'api' ? 'API' : 'Google 시트'}에 연결됨</b><span class="w-meta">${esc(c.url.length > 60 ? c.url.slice(0, 57) + '…' : c.url)}${c.at ? ' · 마지막 ' + D.md(c.at) : ''}</span></div>
+    <div class="row-act"><button class="btn primary" data-act="api-pull" data-src="${src}">지금 가져오기</button><button class="btn ghost" data-act="api-unlink" data-src="${src}">연결 끊기</button></div></div>`;
+  return '';
+}
+function apiBox(src) {
+  return `<div id="api-box" class="paste-box api-box" hidden>
+    <div class="seg-pick" role="radiogroup" aria-label="연결 방식"><label class="ch on"><input type="radio" name="api-kind" value="sheet" checked>Google 시트</label><label class="ch"><input type="radio" name="api-kind" value="api">시스템 API (JSON)</label></div>
+    <label class="fld"><span>주소</span><input id="api-url" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
+    <p class="hint api-sheet">시트를 "링크가 있는 모든 사용자"로 공유했다면 바로 읽습니다. 공유하지 않은 시트는 <a href="#connect">Google 연결</a> 후 읽을 수 있습니다.</p>
+    <div class="api-only" hidden>
+      <label class="fld"><span>요청 헤더 <span class="hint">(한 줄에 하나)</span></span><textarea id="api-header" rows="2" placeholder="Authorization: Bearer 발급받은-키"></textarea></label>
+      <label class="fld"><span>목록 위치 <span class="hint">(응답이 바로 목록이면 비워 두기)</span></span><input id="api-path" placeholder="data.items"></label>
+      <p class="hint">회사 시스템이 브라우저 호출을 막아 두었다면(CORS) 읽을 수 없습니다. 그럴 땐 시스템에서 Google 시트로 내보내 연결하세요.</p>
+    </div>
+    <label class="check"><input type="checkbox" id="api-keep" checked> 이 연결을 저장해서 다음부터 "지금 가져오기" 한 번으로 받기</label>
+    <div class="row-act"><button class="btn primary" data-act="api-load" data-src="${src}">불러오기</button></div>
+  </div>`;
+}
+
+/* ───────── 연결 설정 화면 ───────── */
+function viewConnect() {
+  const ok = v => v ? '<span class="sg sg-ok">연결됨</span>' : '<span class="sg sg-off">연결 안 됨</span>';
+  return `
+  <header class="page-head"><div><h1>연결 설정</h1><p class="sub">Gmail·Slack으로 바로 보내고, Google 시트·API에서 바로 가져오도록 연결합니다. 모두 무료로 쓸 수 있습니다.</p></div></header>
+  <form id="conn-form" class="conn-grid">
+    <section class="panel">
+      <div class="panel-head"><h2>Google</h2>${ok(CONN.google.clientId)}<span class="hint">Gmail로 보내기 · 공유하지 않은 시트 읽기</span></div>
+      <label class="fld"><span>OAuth Client ID</span><input name="g_client" value="${esc(CONN.google.clientId)}" placeholder="1234-abcd.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label>
+      <div class="row-act"><button type="button" class="btn" data-act="g-test">Google 로그인 시험</button></div>
+      <details class="howto"><summary>Client ID 만드는 법</summary><ol>
+        <li>Google Cloud 콘솔에서 프로젝트를 만들고 <b>Gmail API</b>와 <b>Google Sheets API</b>를 사용 설정합니다.</li>
+        <li>OAuth 동의 화면을 "외부"로 만들고, 테스트 사용자에 본인 Gmail을 넣습니다.</li>
+        <li>사용자 인증 정보 → OAuth 클라이언트 ID → 웹 애플리케이션을 고릅니다.</li>
+        <li>승인된 JavaScript 원본에 <code>${esc(location.origin)}</code>를 넣고, 만들어진 Client ID를 위에 붙여넣습니다.</li>
+      </ol><p class="hint">비밀 키(Client Secret)는 필요 없습니다. 메일은 로그인한 본인 계정에서 나갑니다.</p></details>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Slack</h2>${ok(CONN.slack.it || CONN.slack.ga)}<span class="hint">IT·총무 채널에 요청 올리기</span></div>
+      <label class="fld"><span>IT 요청 채널 웹훅</span><input name="s_it" value="${esc(CONN.slack.it || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label>
+      <label class="fld"><span>총무 요청 채널 웹훅</span><input name="s_ga" value="${esc(CONN.slack.ga || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label>
+      <div class="row-act"><button type="button" class="btn" data-act="s-test">시험 메시지 보내기</button></div>
+      <details class="howto"><summary>웹훅 만드는 법</summary><ol>
+        <li>api.slack.com/apps에서 앱을 만들고 <b>Incoming Webhooks</b>를 켭니다.</li>
+        <li>"Add New Webhook to Workspace"로 채널을 고르면 주소가 나옵니다.</li>
+        <li>채널마다 하나씩 만들어 위에 붙여넣습니다.</li>
+      </ol><p class="hint">웹훅 주소를 아는 사람은 누구나 그 채널에 글을 올릴 수 있습니다. 공용 PC에서는 넣지 마세요.</p></details>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>메일로 받을 담당자</h2><span class="hint">Slack 대신 메일로 요청할 때</span></div>
+      <label class="fld"><span>IT 담당 메일</span><input name="m_it" type="email" value="${esc(CONN.mail.it || '')}" placeholder="it-help@회사.com"></label>
+      <label class="fld"><span>총무 담당 메일</span><input name="m_ga" type="email" value="${esc(CONN.mail.ga || '')}" placeholder="ga@회사.com"></label>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>데이터 연결</h2><span class="hint">데이터 가져오기에서 연결합니다</span></div>
+      <ul class="plain">${Object.keys(SOURCES).map(k => { const c = CONN.sources[k]; return `<li><a href="#import/${k}">${SOURCES[k].name}</a><span>${c ? (c.kind === 'api' ? 'API' : 'Google 시트') + (c.at ? ' · ' + D.md(c.at) + ' 가져옴' : '') : '<span class="muted">파일로 올림</span>'}</span></li>`; }).join('')}</ul>
+    </section>
+    <div class="conn-save"><button class="btn primary" data-act="conn-save">저장</button><span class="hint">연결 정보는 이 브라우저에만 저장되고 어떤 서버로도 보내지 않습니다.</span></div>
+  </form>`;
+}
+function readConnForm() {
+  const f = $('#conn-form'); if (!f) return;
+  const v = n => f.elements[n].value.trim();
+  const changed = CONN.google.clientId !== v('g_client');
+  CONN.google.clientId = v('g_client'); if (changed) { G_TOKEN = null; delete CONN.google.ok; }
+  CONN.slack.it = v('s_it'); CONN.slack.ga = v('s_ga');
+  CONN.mail.it = v('m_it'); CONN.mail.ga = v('m_ga');
+  saveConn();
+  if (CONN.google.clientId) loadGis().catch(() => {});
+}
+const CONNECT_ACTS = {
+  ask: b => askCompose(b.dataset.r),
+  'conn-save': () => { readConnForm(); render(); toast('연결 설정을 저장했습니다.'); },
+  'g-test': () => { readConnForm(); googleToken(true).then(() => { render(); toast('Google에 연결됐습니다.'); }, e => toast(e.message)); },
+  's-test': () => { readConnForm(); const ks = ['it', 'ga'].filter(k => CONN.slack[k]); if (!ks.length) { toast('웹훅 주소를 먼저 넣어 주세요.'); return; }
+    Promise.all(ks.map(k => slackSend(CONN.slack[k], '온보딩 대시보드 연결 시험입니다.'))).then(() => toast('보냈습니다. Slack 채널에 메시지가 왔는지 확인하세요.'), () => toast('보내지 못했습니다. 주소를 확인하세요.')); },
+  'api-toggle': b => { const box = $('#api-box'), open = box.hidden; box.hidden = !open; b.setAttribute('aria-expanded', open); b.classList.toggle('on', open); if (open) $('#api-url').focus(); },
+  'api-load': b => { const kind = $('[name=api-kind]:checked').value, url = $('#api-url').value.trim(); if (!url) { toast('주소를 넣어 주세요.'); return; }
+    pullSource(b.dataset.src, { kind, url, header: kind === 'api' ? $('#api-header').value : '', path: kind === 'api' ? $('#api-path').value.trim() : '' }, $('#api-keep').checked); },
+  'api-pull': b => pullSource(b.dataset.src, CONN.sources[b.dataset.src], true),
+  'api-unlink': b => { delete CONN.sources[b.dataset.src]; saveConn(); render(); toast('연결을 끊었습니다. 파일로 올리는 방식은 그대로 쓸 수 있습니다.'); },
+};
+document.addEventListener('change', e => {
+  if (e.target.name === 'api-kind') {
+    const api = e.target.value === 'api';
+    document.querySelectorAll('[name=api-kind]').forEach(x => x.closest('.ch').classList.toggle('on', x.checked));
+    $('.api-only').hidden = !api; $('.api-sheet').hidden = api;
+    $('#api-url').placeholder = api ? 'https://hr.회사.com/api/v1/employees?status=new' : 'https://docs.google.com/spreadsheets/d/…';
+  }
+});

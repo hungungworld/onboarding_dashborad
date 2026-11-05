@@ -93,9 +93,9 @@ function sendTargets(s) {
 }
 
 /* ───────── 라우팅 ───────── */
-const VIEWS = { today: viewToday, prep: viewPrep, hires: viewHires, hire: viewHire, surveys: viewSurveys, survey: viewSurvey, import: viewImport, settings: viewSettings, respond: viewRespond };
+const VIEWS = { today: viewToday, prep: viewPrep, hires: viewHires, hire: viewHire, surveys: viewSurveys, survey: viewSurvey, import: viewImport, connect: viewConnect, settings: viewSettings, respond: viewRespond };
 function route() { const p = (location.hash.slice(1) || 'today').split('/'); return { v: VIEWS[p[0]] ? p[0] : 'today', a: decodeURIComponent(p[1] || ''), b: decodeURIComponent(p[2] || '') }; }
-const UI = { prepScope: 'upcoming', hq: '', htype: '', hstage: '', horg: '', hrisk: false };
+const UI = { prepScope: 'upcoming', tq: '', towner: '', hq: '', htype: '', hstage: '', horg: '', hrisk: false };
 
 /* 사이드바 접기·펴기 (상태는 이 브라우저에 기억) */
 function setNavCollapsed(on) {
@@ -145,82 +145,102 @@ function recipientOf(t, h) {
   return { id: t.owner, label: t.owner + ' 담당', sub: t.owner === 'IT' ? '계정·장비' : '자리·출입증·명함', to: '' };
 }
 
-function viewToday(dv) {
+const TODAY_TABS = [['me', '내가 할 일'], ['req', '요청 보내기'], ['soon', '곧 입사'], ['watch', '살펴볼 입사자']];
+
+function viewToday(dv, tab) {
   const { st, info } = dv;
-  // 챙길 일: 지연, 문제, 2일 안에 마감
+  if (!TODAY_TABS.some(x => x[0] === tab)) tab = 'me';
+
+  // 챙길 일: 지연, 문제, 2일 안에 마감 → 받는 곳별로 묶음
   const due = S.tasks.filter(t => { const s = st.get(t.id); return s === '지연' || s === '문제' || (s === '진행' && D.diff(t.due, TODAY) <= 2); });
   const groups = {};
   due.forEach(t => { const h = hireOf(t.key); if (!h || !isActive(h)) return; const r = recipientOf(t, h); (groups[r.id] = groups[r.id] || { r, items: [] }).items.push(t); });
-  const order = Object.values(groups).sort((a, b) => (b.r.id === 'HR') - (a.r.id === 'HR') ||
-    b.items.filter(t => st.get(t.id) === '지연').length - a.items.filter(t => st.get(t.id) === '지연').length || b.items.length - a.items.length);
+  const lateOf = g => g.items.filter(t => st.get(t.id) === '지연').length;
+  const byUrgency = (a, b) => lateOf(b) - lateOf(a) || b.items.length - a.items.length;
+  const mine = groups.HR ? groups.HR.items : [];
+  const others = Object.values(groups).filter(g => g.r.id !== 'HR');
+  const teams = others.filter(g => !g.r.id.startsWith('n:') && !g.r.id.startsWith('m:')).sort(byUrgency);
+  const people = others.filter(g => g.r.id.startsWith('n:')).sort(byUrgency);
+  const mgrs = others.filter(g => g.r.id.startsWith('m:')).sort(byUrgency);
 
-  const arriving = S.hires.filter(h => isActive(h) && D.diff(h.start, TODAY) >= 0 && D.diff(h.start, TODAY) <= 14).sort((a, b) => D.n(a.start) - D.n(b.start));
-  const notReady = arriving.filter(h => D.diff(h.start, TODAY) <= 7 && info.get(h.key).live.some(t => t.offset < 0 && !t.done));
-  const lateN = S.tasks.filter(t => st.get(t.id) === '지연').length;
+  // 내가 할 일: HR 담당 일 + 법정·규정 기한(2주 안) + 설문 발송 대기
+  const legal = S.tasks.filter(t => t.rule && !t.done && !t.closed && D.diff(t.due, TODAY) <= 14 && isActive(hireOf(t.key) || {}) && !mine.includes(t)).sort((a, b) => D.n(a.due) - D.n(b.due));
   const waiting = S.surveys.filter(s => s.active).map(s => [s, sendTargets(s)]).filter(x => x[1].length);
-  const waitN = waiting.reduce((n, x) => n + x[1].length, 0);
+  const meN = mine.length + legal.length + waiting.length;
+  const meLate = mine.filter(t => st.get(t.id) === '지연').length + legal.filter(t => D.diff(t.due, TODAY) < 0).length;
 
-  const legal = S.tasks.filter(t => (t.rule || t.kind === 'LMS') && !t.done && !t.closed && D.diff(t.due, TODAY) <= 14 && isActive(hireOf(t.key) || {})).sort((a, b) => D.n(a.due) - D.n(b.due));
+  // 곧 입사: 2주 안, 준비 덜 된 사람 먼저
+  const arriving = S.hires.filter(h => isActive(h) && D.diff(h.start, TODAY) >= 0 && D.diff(h.start, TODAY) <= 14).map(h => {
+    const pre = info.get(h.key).live.filter(t => t.offset < 0 && !t.rule);
+    const done = pre.filter(t => t.done).length, k = D.diff(h.start, TODAY);
+    return { h, pre, done, k, risk: k <= 7 && done < pre.length };
+  }).sort((a, b) => b.risk - a.risk || a.k - b.k);
+  const riskN = arriving.filter(x => x.risk).length;
+
+  // 살펴볼 입사자: 위험 신호 + 설문 응답 3일 이상 대기
+  // 가벼운 지연(warn)만 있는 사람은 '요청 보내기'에서 다루므로 제외
+  const watch = S.hires.filter(h => info.get(h.key).signals.some(s => s[0] !== 'warn')).sort((a, b) => info.get(b.key).signals.filter(s => s[0] === 'bad').length - info.get(a.key).signals.filter(s => s[0] === 'bad').length);
   const pendingResp = S.sends.filter(x => sendState(x) === '대기' && D.diff(TODAY, x.sentAt) >= 3);
-  const watch = S.hires.filter(h => info.get(h.key).signals.length).sort((a, b) => info.get(b.key).signals.filter(s => s[0] === 'bad').length - info.get(a.key).signals.filter(s => s[0] === 'bad').length);
+
+  const counts = {
+    me: [meN, meLate ? 'bad' : ''],
+    req: [others.length + '곳', others.some(g => lateOf(g)) ? 'bad' : ''],
+    soon: [arriving.length + '명', riskN ? 'bad' : ''],
+    watch: [watch.length + pendingResp.length + '명', ''],
+  };
+
+  // 데이터 기준일: 오래된 것만 한 줄로
+  const stale = Object.keys(SOURCES_META).filter(k => { const at = S.lastImport[k]; return !at || D.diff(TODAY, at) > SOURCES_META[k].cadence; });
+  const fresh = stale.length
+    ? stale.map(k => { const at = S.lastImport[k]; return `<a class="stale" href="#import/${k}">${SOURCES_META[k].name} ${at ? D.diff(TODAY, at) + '일 전' : '가져온 적 없음'} · <u>새로 가져오기</u></a>`; }).join('')
+    : `<a href="#import">데이터 모두 최신</a>`;
+
+  const body = {
+    me: () => {
+      const rows = [
+        ...mine.sort((a, b) => D.n(a.due) - D.n(b.due)).map(t => { const h = hireOf(t.key); return `<li>${chip(st.get(t.id))}<div class="t-main"><span><b>${esc(h.name)}</b> · ${esc(t.title)}</span><span class="t-meta">${orgName(h.org)} · ${D.md(h.start)} 입사 · ${dueText(t)}</span>${t.memo ? `<span class="t-memo">${esc(t.memo)}</span>` : ''}</div><div class="t-act"><button class="btn sm" data-act="done" data-id="${esc(t.id)}">완료</button><button class="btn sm ghost" data-act="memo" data-id="${esc(t.id)}">메모</button></div></li>`; }),
+        ...legal.map(t => { const h = hireOf(t.key); return `<li><span class="st st-${D.diff(t.due, TODAY) < 0 ? 'bad' : 'law'}">법정</span><div class="t-main"><span><b>${esc(h.name)}</b> · ${esc(shortTitle(t.title))}</span><span class="t-meta">${orgName(h.org)} · ${D.md(h.start)} 입사 · ${dueText(t)}</span></div><div class="t-act"><button class="btn sm" data-act="done" data-id="${esc(t.id)}">완료</button><button class="btn sm ghost" data-act="memo" data-id="${esc(t.id)}">메모</button></div></li>`; }),
+        ...waiting.map(([s, t]) => `<li><span class="st st-now">설문</span><div class="t-main"><span>${esc(s.name)} · <b>${t.length}명</b> 발송 대기</span><span class="t-meta">${t.slice(0, 3).map(h => esc(h.name)).join(', ')}${t.length > 3 ? ' 외 ' + (t.length - 3) + '명' : ''}</span></div><div class="t-act"><a class="btn sm" href="#survey/${s.id}">보내기</a></div></li>`),
+      ];
+      return `<p class="tab-hint">HR이 직접 처리할 일만 모았습니다. 법정·규정 기한은 2주 안에 오는 것까지 보입니다.</p>` +
+        (rows.length ? `<ul class="citems rows">${rows.join('')}</ul>` : '<p class="empty">오늘 직접 처리할 일이 없습니다.</p>');
+    },
+    req: () => {
+      const one = g => { const n = lateOf(g); return `<details class="rq"><summary><div class="rq-main"><b>${esc(g.r.label)}</b><span class="w-meta">${esc(g.r.sub)} · ${g.items.length}건</span></div>${n ? `<span class="sg sg-bad">지연 ${n}</span>` : `<span class="sg sg-warn">2일 안</span>`}${lastAsk(g.r.id) ? `<span class="asked">${D.md(lastAsk(g.r.id).at)} 보냄</span>` : ''}<button class="btn sm" data-act="ask" data-r="${esc(g.r.id)}">보내기</button></summary>${contactGroup(g, st, true)}</details>`; };
+      const bundle = (label, sub, list) => { if (!list.length) return ''; const n = list.reduce((a, g) => a + lateOf(g), 0), k = list.reduce((a, g) => a + g.items.length, 0);
+        return `<details class="rq"><summary><div class="rq-main"><b>${label} ${list.length}명</b><span class="w-meta">${sub} · ${k}건</span></div>${n ? `<span class="sg sg-bad">지연 ${n}</span>` : ''}<span class="rq-open">펼치기</span></summary><div class="rq-sub">${list.map(one).join('')}</div></details>`; };
+      return `<p class="tab-hint">기한이 지났거나 2일 안에 마감인 일을 받는 곳별로 한 줄씩 묶었습니다. 줄을 누르면 항목이 펼쳐집니다.</p>` +
+        (others.length ? teams.map(one).join('') + bundle('입사자', '제출 서류·교육', people) + bundle('매니저', '버디·면담·평가', mgrs) : '<p class="empty">요청할 곳이 없습니다. 모든 준비가 기한 안에 진행되고 있습니다.</p>');
+    },
+    soon: () => `<p class="tab-hint">2주 안에 입사하는 사람입니다. 7일 안 입사인데 준비가 덜 된 사람이 맨 위에 옵니다.</p>` +
+      (arriving.length ? `<ul class="arrive rows">${arriving.map(({ h, pre, done, k, risk }) => `<li><span class="st st-${risk ? 'bad' : 'wait'}">${k === 0 ? '오늘' : 'D-' + k}</span><div class="t-main"><div class="a-top">${link(h)}<span class="w-meta">${orgName(h.org)} · ${D.md(h.start)}(${D.dow(h.start)}) 입사</span></div>
+        <div class="prog"><div class="bar ${risk ? 'bad' : ''}"><i style="width:${pct(done, pre.length) || 0}%"></i></div><span>준비 ${done}/${pre.length}</span></div></div></li>`).join('')}</ul><a class="more" href="#prep">입사 준비 현황판에서 전체 보기</a>` : '<p class="empty">2주 안에 입사하는 사람이 없습니다.</p>'),
+    watch: () => `<p class="tab-hint">기한 지연, 문제 보고, 낮은 설문 점수, 매니저의 도움 요청 같은 신호가 있는 사람입니다.</p>` +
+      (watch.length ? `<ul class="watch rows">${watch.map(h => `<li><div class="a-top">${link(h)}<span class="w-meta">${orgName(h.org)} · ${info.get(h.key).stage}</span></div><div>${info.get(h.key).signals.map(s => `<span class="sg sg-${s[0]}">${esc(s[1])}</span>`).join('')}</div></li>`).join('')}</ul>` : '<p class="empty">위험 신호가 있는 입사자가 없습니다.</p>') +
+      (pendingResp.length ? `<h3 class="tab-sub">설문 응답 3일 이상 대기 <span class="count">${pendingResp.length}명</span></h3><ul class="plain">${pendingResp.map(x => { const h = hireOf(x.key), s = S.surveys.find(v => v.id === x.survey); return h ? `<li><span>${link(h)} · ${esc(s ? s.name : '')}</span><span>${D.diff(TODAY, x.sentAt)}일째</span></li>` : ''; }).join('')}</ul>` : ''),
+  };
 
   return `
   <header class="page-head">
     <div><h1>오늘 할 일</h1><p class="sub">${D.md(TODAY)} ${D.dow(TODAY)}요일</p></div>
-    <div class="head-act"><a class="btn" href="#import">데이터 가져오기</a></div>
+    <div class="head-fresh">${fresh}</div>
   </header>
-  <section class="freshbar" aria-label="데이터 기준일">${freshness()}</section>
-
-  <section class="sumline" aria-label="요약">
-    <a href="#prep"><b>${arriving.length}</b>명 2주 안에 입사</a>
-    <a href="#prep" class="${notReady.length ? 'bad' : ''}"><b>${notReady.length}</b>명 7일 안 입사인데 준비 미완료</a>
-    <span class="${lateN ? 'bad' : ''}"><b>${lateN}</b>건 기한 지남</span>
-    <a href="#surveys" class="${waitN ? 'warn' : ''}"><b>${waitN}</b>명 설문 발송 대기</a>
-  </section>
-
-  <div class="home-grid">
-    <section class="panel">
-      <div class="panel-head"><h2>연락할 곳</h2><span class="hint">기한 지남 · 문제 · 2일 안 마감 · 받는 곳별로 묶음</span></div>
-      ${order.length ? order.map(g => contactGroup(g, st)).join('') : '<p class="empty">오늘 연락할 곳이 없습니다. 모든 준비가 기한 안에 진행되고 있습니다.</p>'}
-    </section>
-    <div class="side">
-      <section class="panel">
-        <div class="panel-head"><h2>2주 안에 입사</h2><a class="more" href="#prep">준비 현황판</a></div>
-        ${arriving.length ? `<ul class="arrive">${arriving.map(h => {
-          const pre = info.get(h.key).live.filter(t => t.offset < 0 && !t.rule);
-          const done = pre.filter(t => t.done).length, p = pct(done, pre.length) || 0;
-          const k = D.diff(h.start, TODAY);
-          return `<li><div class="a-top">${link(h)}<span class="w-meta">${D.md(h.start)}(${D.dow(h.start)}) · ${k === 0 ? '오늘 입사' : 'D-' + k} · ${orgName(h.org)}</span></div>
-            <div class="prog"><div class="bar ${p < 60 && k <= 7 ? 'bad' : ''}"><i style="width:${p}%"></i></div><span>${done}/${pre.length}</span></div></li>`;
-        }).join('')}</ul>` : '<p class="empty">2주 안에 입사하는 사람이 없습니다.</p>'}
-      </section>
-      <section class="panel">
-        <div class="panel-head"><h2>기한이 정해진 일</h2><span class="hint">법정·규정 기한</span></div>
-        ${legal.length ? `<ul class="plain">${legal.slice(0, 8).map(t => { const h = hireOf(t.key); return `<li><span>${esc(shortTitle(t.title))} · ${link(h)}</span><span>${dueText(t)}</span></li>`; }).join('')}</ul>` : '<p class="empty">2주 안에 기한이 오는 일이 없습니다.</p>'}
-      </section>
-      <section class="panel">
-        <div class="panel-head"><h2>설문</h2><a class="more" href="#surveys">설문 관리</a></div>
-        <ul class="plain">
-          ${waiting.map(([s, t]) => `<li><a href="#survey/${s.id}">${esc(s.name)}</a><span class="warn-t">${t.length}명 발송 대기</span></li>`).join('')}
-          <li><span>응답 대기 (3일 이상)</span><span>${pendingResp.length}명</span></li>
-        </ul>
-      </section>
-      <section class="panel">
-        <div class="panel-head"><h2>관심 필요 입사자</h2><span class="count">${watch.length}명</span></div>
-        ${watch.length ? `<ul class="watch">${watch.slice(0, 6).map(h => `<li><div class="a-top">${link(h)}<span class="w-meta">${orgName(h.org)} · ${info.get(h.key).stage}</span></div><div>${info.get(h.key).signals.map(s => `<span class="sg sg-${s[0]}">${esc(s[1])}</span>`).join('')}</div></li>`).join('')}</ul>` : '<p class="empty">위험 신호가 있는 입사자가 없습니다.</p>'}
-      </section>
-    </div>
-  </div>`;
+  <nav class="day-tabs" role="tablist" aria-label="오늘 할 일 구분">
+    ${TODAY_TABS.map(([k, label]) => `<a role="tab" href="#today/${k}" aria-selected="${k === tab}" class="${k === tab ? 'on' : ''}">${label}<span class="tab-n ${counts[k][1]}">${counts[k][0]}</span></a>`).join('')}
+  </nav>
+  <section class="panel tab-panel" role="tabpanel">${body[tab]()}</section>`;
 }
 
-function contactGroup(g, st) {
+function contactGroup(g, st, bare) {
   const lateN = g.items.filter(t => st.get(t.id) === '지연').length;
   g.items.sort((a, b) => D.n(a.due) - D.n(b.due));
+  const list = `<ul class="citems">${g.items.map(t => { const h = hireOf(t.key), s = st.get(t.id); return `<li>${chip(s)}<div class="t-main"><span><b>${esc(h.name)}</b> · ${esc(t.title)}</span><span class="t-meta">${g.r.id.startsWith('n:') ? '' : orgName(h.org) + ' · ' + D.md(h.start) + ' 입사 · '}${dueText(t)}</span>${t.memo ? `<span class="t-memo">${esc(t.memo)}</span>` : ''}</div>
+      <div class="t-act">${t.kind === 'LMS' ? '' : `<button class="btn sm" data-act="done" data-id="${esc(t.id)}">완료</button>`}<button class="btn sm ghost" data-act="memo" data-id="${esc(t.id)}">메모</button></div></li>`; }).join('')}</ul>`;
+  if (bare) return list;
   return `<div class="cgroup">
     <div class="cg-head"><div><b>${esc(g.r.label)}</b><span class="w-meta">${esc(g.r.sub)}${g.r.to ? ' · ' + esc(g.r.to) : ''}</span></div>
       <div class="cg-act">${lateN ? `<span class="sg sg-bad">지연 ${lateN}</span>` : ''}${g.r.id === 'HR' ? '' : `<button class="btn sm" data-act="copy-request" data-r="${esc(g.r.id)}">요청 문구 복사</button>`}</div></div>
-    <ul class="citems">${g.items.map(t => { const h = hireOf(t.key), s = st.get(t.id); return `<li>${chip(s)}<div class="t-main"><span><b>${esc(h.name)}</b> · ${esc(t.title)}</span><span class="t-meta">${g.r.id.startsWith('n:') ? '' : orgName(h.org) + ' · ' + D.md(h.start) + ' 입사 · '}${dueText(t)}</span>${t.memo ? `<span class="t-memo">${esc(t.memo)}</span>` : ''}</div>
-      <div class="t-act">${t.kind === 'LMS' ? '' : `<button class="btn sm" data-act="done" data-id="${esc(t.id)}">완료</button>`}<button class="btn sm ghost" data-act="memo" data-id="${esc(t.id)}">메모</button></div></li>`; }).join('')}</ul>
+    ${list}
   </div>`;
 }
 
@@ -524,9 +544,9 @@ let IMP = null; // { src, file, head, rows, map, surveyId, plan }
 function viewImport(dv, src) {
   if (!SOURCES[src]) src = '';
   const cards = Object.keys(SOURCES).map(k => { const m = SOURCES[k], at = S.lastImport[k];
-    return `<a class="src ${k === src ? 'on' : ''}" href="#import/${k}"><b>${m.name}</b><span class="w-meta">${esc(m.from.split(' → ')[0])} · ${at ? D.md(at) + ' 가져옴' : '가져온 적 없음'}</span></a>`; }).join('');
+    return `<a class="src ${k === src ? 'on' : ''}" href="#import/${k}"><b>${m.name}</b><span class="w-meta">${esc(m.from.split(' → ')[0])} · ${at ? D.md(at) + ' 가져옴' : '가져온 적 없음'}${CONN.sources[k] ? ' · 연결됨' : ''}</span></a>`; }).join('');
   return `
-  <header class="page-head"><div><h1>데이터 가져오기</h1><p class="sub">이미 쓰고 있는 시스템에서 엑셀을 내려받아 올리면 됩니다. 열 이름이 달라도 맞춰서 읽습니다.</p></div></header>
+  <header class="page-head"><div><h1>데이터 가져오기</h1><p class="sub">이미 쓰고 있는 시스템에서 엑셀을 내려받아 올리거나, Google 시트·API로 연결해 바로 받아옵니다. 열 이름이 달라도 맞춰서 읽습니다.</p></div></header>
   <div class="import-grid">
     <nav class="srcs" aria-label="가져올 데이터">${cards}</nav>
     <section class="panel">${src ? importPanel(src) : `<p class="empty">왼쪽에서 가져올 데이터를 고르세요.</p>`}</section>
@@ -545,6 +565,7 @@ function importPanel(src) {
   <ol class="steps"><li class="${step >= 1 ? 'on' : ''}">파일 올리기</li><li class="${step >= 2 ? 'on' : ''}">열 맞추기</li><li class="${step >= 3 ? 'on' : ''}">바뀌는 내용 확인</li></ol>
   ${src === 'survey' ? `<label class="fld inline"><span>어느 설문의 응답인가요?</span><select data-act="imp-survey">${S.surveys.map(s => `<option value="${s.id}" ${s.id === IMP.surveyId ? 'selected' : ''}>${esc(s.name)} (${s.audience})</option>`).join('')}</select></label>` : ''}
   ${step === 1 ? `
+    ${apiPanel(src)}
     <p class="drop-req">꼭 있어야 하는 열 ${SOURCES[src].fields.filter(f => f[2]).map(f => `<i>${esc(f[1])}</i>`).join('')}<span>열 이름이 달라도 다음 단계에서 맞출 수 있습니다.</span></p>
     <label class="drop" id="drop" for="imp-file">
       <input type="file" id="imp-file" class="sr" accept=".xlsx,.xls,.csv,.tsv,.txt">
@@ -555,7 +576,9 @@ function importPanel(src) {
     <div class="drop-alt">
       <button class="alt" data-act="sample" data-src="${src}"><b>샘플 엑셀 받기</b><span>화면 속 데이터와 맞물린 파일이라 그대로 올리면 실제로 반영됩니다.</span></button>
       <button class="alt" data-act="paste-toggle" aria-expanded="false" aria-controls="paste-box"><b>엑셀에서 복사해 붙여넣기</b><span>파일 없이 엑셀 표를 복사해서 바로 넣습니다.</span></button>
+      <button class="alt" data-act="api-toggle" aria-expanded="false" aria-controls="api-box"><b>Google 시트·API로 연결</b><span>한 번 연결해 두면 다음부터 버튼 한 번으로 받아옵니다.</span></button>
     </div>
+    ${apiBox(src)}
     <div id="paste-box" class="paste-box" hidden><textarea id="imp-paste" rows="6" placeholder="엑셀에서 머리글 줄까지 선택해 복사(Ctrl+C)한 뒤 여기에 붙여넣으세요(Ctrl+V)"></textarea><div class="row-act"><button class="btn primary" data-act="imp-paste">붙여넣은 내용 읽기</button></div></div>`
   : step === 2 ? mappingStep(src) : planStep(src)}`;
 }
@@ -757,12 +780,21 @@ function downloadSample(src) {
 
 /* ═════════ 체크리스트 설정 ═════════ */
 function viewSettings() {
+  const q = UI.tq.trim().toLowerCase();
+  const rows = S.template.map((t, i) => [t, i]).filter(([t]) => (!UI.towner || t.owner === UI.towner) &&
+    (!q || [t.title, t.code, t.owner, t.kind, t.target, t.link].some(v => String(v || '').toLowerCase().includes(q))));
+  const owners = [...new Set(S.template.map(t => t.owner))];
   return `
   <header class="page-head"><div><h1>체크리스트 설정</h1><p class="sub">입사자가 추가되면 이 목록대로 할 일과 기한이 만들어집니다. 바꾼 내용은 앞으로 추가되는 입사자부터 적용됩니다.</p></div>
     <div class="head-act"><button class="btn primary" data-act="tpl-edit" data-i="-1">항목 추가</button></div></header>
+  <div class="filters">
+    <input type="search" placeholder="항목 이름, 코드, 방식, 대상" value="${esc(UI.tq)}" data-f="tq" aria-label="체크리스트 검색">
+    <select data-f="towner" aria-label="담당"><option value="">담당 전체</option>${owners.map(o => `<option ${o === UI.towner ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
+    <span class="hint">${rows.length === S.template.length ? '전체 ' + rows.length + '개' : S.template.length + '개 중 ' + rows.length + '개'}</span>
+  </div>
   <section class="panel flush"><div class="scroll"><table class="tbl">
     <thead><tr><th>항목</th><th>담당</th><th>방식</th><th>기한</th><th class="num">챙기기 시작</th><th>대상</th><th></th></tr></thead>
-    <tbody>${S.template.map((t, i) => `<tr class="${t.active ? '' : 'off'}"><td><b>${esc(t.title)}</b><span class="small">${esc(t.code)}</span></td><td>${t.owner}</td><td>${t.kind}${t.link ? `<span class="small">${esc(t.link)}</span>` : ''}</td>
+    <tbody>${rows.length ? '' : '<tr><td colspan="7" class="empty">찾는 항목이 없습니다.</td></tr>'}${rows.map(([t, i]) => `<tr class="${t.active ? '' : 'off'}"><td><b>${esc(t.title)}</b><span class="small">${esc(t.code)}</span></td><td>${t.owner}</td><td>${t.kind}${t.link ? `<span class="small">${esc(t.link)}</span>` : ''}</td>
       <td>${t.rule === 'nextMonth15' ? '입사한 달의 다음 달 15일 (법정)' : t.rule === 'probation' ? '수습 종료 5일 전' : t.offset < 0 ? '입사 ' + -t.offset + '일 전' : t.offset === 0 ? '입사일' : '입사 ' + t.offset + '일 후'}</td>
       <td class="num">${t.lead}일 전</td><td>${esc(t.target)}</td><td class="nowrap"><button class="btn sm ghost" data-act="tpl-edit" data-i="${i}">수정</button><button class="btn sm ghost" data-act="tpl-toggle" data-i="${i}">${t.active ? '사용 중지' : '다시 사용'}</button></td></tr>`).join('')}</tbody>
   </table></div></section>
@@ -852,8 +884,11 @@ function actSend(sid) {
   modal(`${made.length}명에게 보낼 준비가 됐습니다`, `<p class="m-note" style="margin:0 0 8px">회사 메일의 받는 사람에 아래 주소를, 본문에 안내 문구를 넣고 <b>{링크}</b> 자리에 각자의 링크를 붙여 보내세요. 응답하면 결과에 바로 반영됩니다.</p>
     <label class="fld"><span>안내 문구</span><textarea rows="7" readonly id="mail-text">${esc(mail)}</textarea></label>
     <table class="tbl compact"><thead><tr><th>입사자</th><th>받는 사람</th><th>개인 링크</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.h.name)}</td><td>${esc(r.to)}</td><td><a href="${esc(r.url)}" target="_blank" rel="noopener">링크 열기</a></td></tr>`).join('')}</tbody></table>
+    ${CONN.google.clientId ? `<div class="row-act"><button type="button" class="btn primary" id="gmail-all">Gmail로 ${made.length}명에게 바로 보내기</button></div>` : `<p class="m-note"><a href="#connect">연결 설정</a>에서 Gmail을 연결하면 사람마다 다른 링크를 넣어 여기서 바로 보낼 수 있습니다.</p>`}
     <div class="row-act"><button type="button" class="btn" id="copy-mail">안내 문구 복사</button><button type="button" class="btn" id="copy-links">받는 사람·링크 목록 복사 (엑셀 붙여넣기용)</button></div>`, null, null, true);
   $('#copy-mail').onclick = () => copy(mail);
+  if ($('#gmail-all')) $('#gmail-all').onclick = e => { const btn = e.currentTarget; btn.disabled = true; btn.textContent = '보내는 중…';
+    surveyGmail(rows, mail, made, n => { $('#modal').close(); toast(`Gmail로 ${n}명에게 보냈습니다.`); }).catch(err => { btn.disabled = false; btn.textContent = '다시 보내기'; toast(err.message); }); };
   $('#copy-links').onclick = () => copy('이름\t받는 사람\t링크\n' + rows.map(r => `${r.h.name}\t${r.to}\t${r.url}`).join('\n'), '목록을 복사했습니다. 엑셀이나 메일 병합에 붙여넣으세요.');
   $('#modal').addEventListener('close', render, { once: true });
 }
@@ -902,7 +937,7 @@ document.addEventListener('click', e => {
     'tpl-edit': () => actTpl(Number(b.dataset.i)), 'tpl-toggle': () => { const t = S.template[Number(b.dataset.i)]; t.active = !t.active; save(); },
     export: () => actExport(b.dataset.v),
     reset: () => modal('예시 데이터로 되돌리기', '<p>가져오거나 수정한 내용이 모두 사라지고 처음 예시 데이터로 돌아갑니다.</p>', () => { S = buildDemo(TODAY); IMP = null; save(); toast('예시 데이터로 되돌렸습니다.'); }, '되돌리기'),
-  }[a] || (() => {}))();
+  }[a] || (CONNECT_ACTS[a] ? () => CONNECT_ACTS[a](b) : () => {}))();
 });
 
 document.addEventListener('change', e => {
