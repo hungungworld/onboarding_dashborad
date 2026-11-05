@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>온보딩 대시보드</title>
+<meta name="description" content="온보딩 담당 HR의 업무 대시보드. 채용·인사·LMS 엑셀을 가져와 입사 준비, 연락할 곳, 법정 기한, 적응 설문을 한 곳에서 관리합니다.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/v3.css">
+</head>
+<body>
+<a class="skip" href="#view">본문으로 건너뛰기</a>
+<div class="shell">
+  <aside class="nav" aria-label="메뉴">
+    <div class="brand">
+      <div class="brand-text"><b>온보딩</b><span>HR 업무 대시보드</span></div>
+      <button type="button" class="nav-toggle" id="nav-toggle" data-act="nav-toggle" aria-expanded="true" aria-label="메뉴 접기" title="메뉴 접기">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/><path class="chev" d="m15.5 10-2 2 2 2"/></svg>
+      </button>
+    </div>
+    <a href="#today" data-v="today" title="오늘 할 일"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9.5h16M8.5 3v4M15.5 3v4M9 14l2 2 4-4"/></svg><span class="nl">오늘 할 일</span><span class="badge" id="badge-today"></span></a>
+    <a href="#prep" data-v="prep" title="입사 준비 현황판"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16M15 4v16"/></svg><span class="nl">입사 준비 현황판</span></a>
+    <a href="#hires" data-v="hires" title="입사자"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg><span class="nl">입사자</span></a>
+    <a href="#surveys" data-v="surveys" title="설문"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v10H10l-5 4z"/><path d="M9 9.5h6M9 12h4"/></svg><span class="nl">설문</span><span class="badge warn" id="badge-surveys"></span></a>
+    <a href="#import" data-v="import" title="데이터 가져오기"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg><span class="nl">데이터 가져오기</span></a>
+    <a href="#settings" data-v="settings" title="체크리스트 설정"><svg class="ni" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/></svg><span class="nl">체크리스트 설정</span></a>
+    <div class="nav-foot">
+      <span class="nf-row"><span>기준일</span><b id="today"></b></span>
+      <span class="nf-note">예시 데이터</span>
+      <span class="nf-note">이 브라우저에만 저장</span>
+    </div>
+  </aside>
+  <main id="view" tabindex="-1"></main>
+</div>
+<dialog id="modal"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

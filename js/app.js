@@ -97,6 +97,17 @@ const VIEWS = { today: viewToday, prep: viewPrep, hires: viewHires, hire: viewHi
 function route() { const p = (location.hash.slice(1) || 'today').split('/'); return { v: VIEWS[p[0]] ? p[0] : 'today', a: decodeURIComponent(p[1] || ''), b: decodeURIComponent(p[2] || '') }; }
 const UI = { prepScope: 'upcoming', hq: '', htype: '', hstage: '', horg: '', hrisk: false };
 
+/* 사이드바 접기·펴기 (상태는 이 브라우저에 기억) */
+function setNavCollapsed(on) {
+  document.body.classList.toggle('nav-collapsed', on);
+  const t = $('#nav-toggle');
+  t.setAttribute('aria-expanded', String(!on));
+  t.setAttribute('aria-label', on ? '메뉴 펴기' : '메뉴 접기');
+  t.title = on ? '메뉴 펴기' : '메뉴 접기';
+  try { localStorage.setItem('onboarding-nav-collapsed', on ? '1' : ''); } catch (e) { /* 저장 불가 */ }
+}
+try { if (localStorage.getItem('onboarding-nav-collapsed')) document.body.classList.add('nav-collapsed'); } catch (e) { /* 저장 불가 */ }
+
 function render() {
   const { v, a, b } = route();
   document.body.classList.toggle('respond-mode', v === 'respond');
@@ -534,9 +545,18 @@ function importPanel(src) {
   <ol class="steps"><li class="${step >= 1 ? 'on' : ''}">파일 올리기</li><li class="${step >= 2 ? 'on' : ''}">열 맞추기</li><li class="${step >= 3 ? 'on' : ''}">바뀌는 내용 확인</li></ol>
   ${src === 'survey' ? `<label class="fld inline"><span>어느 설문의 응답인가요?</span><select data-act="imp-survey">${S.surveys.map(s => `<option value="${s.id}" ${s.id === IMP.surveyId ? 'selected' : ''}>${esc(s.name)} (${s.audience})</option>`).join('')}</select></label>` : ''}
   ${step === 1 ? `
-    <div class="drop" id="drop"><p><b>엑셀(.xlsx) 또는 CSV 파일</b>을 끌어다 놓거나 고르세요.</p><input type="file" id="imp-file" accept=".xlsx,.xls,.csv,.tsv,.txt">
-      <p class="hint">파일이 없으면 <button class="linkbtn" data-act="sample" data-src="${src}">샘플 엑셀 받기</button> · 화면 속 데이터와 맞물려 있어서 올리면 실제로 반영됩니다.</p></div>
-    <details><summary>엑셀에서 복사해서 붙여넣기</summary><textarea id="imp-paste" rows="6" placeholder="엑셀에서 머리글 줄까지 선택해 복사한 뒤 붙여넣으세요"></textarea><div class="row-act"><button class="btn" data-act="imp-paste">읽기</button></div></details>`
+    <p class="drop-req">꼭 있어야 하는 열 ${SOURCES[src].fields.filter(f => f[2]).map(f => `<i>${esc(f[1])}</i>`).join('')}<span>열 이름이 달라도 다음 단계에서 맞출 수 있습니다.</span></p>
+    <label class="drop" id="drop" for="imp-file">
+      <input type="file" id="imp-file" class="sr" accept=".xlsx,.xls,.csv,.tsv,.txt">
+      <svg class="drop-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 18v-6M9 14.5 12 11.5l3 3"/></svg>
+      <span class="drop-title">엑셀 파일을 여기에 끌어다 놓으세요</span>
+      <span class="drop-sub">또는 <u>눌러서 파일 고르기</u> <span class="nw">(.xlsx, .csv)</span></span>
+    </label>
+    <div class="drop-alt">
+      <button class="alt" data-act="sample" data-src="${src}"><b>샘플 엑셀 받기</b><span>화면 속 데이터와 맞물린 파일이라 그대로 올리면 실제로 반영됩니다.</span></button>
+      <button class="alt" data-act="paste-toggle" aria-expanded="false" aria-controls="paste-box"><b>엑셀에서 복사해 붙여넣기</b><span>파일 없이 엑셀 표를 복사해서 바로 넣습니다.</span></button>
+    </div>
+    <div id="paste-box" class="paste-box" hidden><textarea id="imp-paste" rows="6" placeholder="엑셀에서 머리글 줄까지 선택해 복사(Ctrl+C)한 뒤 여기에 붙여넣으세요(Ctrl+V)"></textarea><div class="row-act"><button class="btn primary" data-act="imp-paste">붙여넣은 내용 읽기</button></div></div>`
   : step === 2 ? mappingStep(src) : planStep(src)}`;
 }
 
@@ -875,6 +895,8 @@ document.addEventListener('click', e => {
     'q-up': () => { readSurveyForm(sv); const i = Number(b.dataset.i); [sv.qs[i - 1], sv.qs[i]] = [sv.qs[i], sv.qs[i - 1]]; render(); },
     'survey-save': () => { readSurveyForm(sv); if (!sv.qs.length) { toast('문항을 하나 이상 넣어 주세요.'); return; } save(); toast('설문을 저장했습니다.'); },
     sample: () => downloadSample(b.dataset.src),
+    'paste-toggle': () => { const box = $('#paste-box'), open = box.hidden; box.hidden = !open; b.setAttribute('aria-expanded', open); b.classList.toggle('on', open); if (open) $('#imp-paste').focus(); },
+    'nav-toggle': () => setNavCollapsed(!document.body.classList.contains('nav-collapsed')),
     'imp-paste': () => { const t = $('#imp-paste').value; if (!t.trim()) { toast('붙여넣은 내용이 없습니다.'); return; } loadGrid(parseText(t), '붙여넣기'); },
     'imp-reset': () => { IMP = null; render(); }, 'imp-plan': makePlan, 'imp-back': () => { IMP.plan = null; render(); }, 'imp-apply': applyPlan,
     'tpl-edit': () => actTpl(Number(b.dataset.i)), 'tpl-toggle': () => { const t = S.template[Number(b.dataset.i)]; t.active = !t.active; save(); },

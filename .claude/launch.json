@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "onboarding-dashboard", "runtimeExecutable": "node", "runtimeArgs": ["onboarding-dashboard/tools/serve.js"], "port": 5190 }
+  ]
+}
