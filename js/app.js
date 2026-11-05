@@ -95,7 +95,7 @@ function sendTargets(s) {
 /* ───────── 라우팅 ───────── */
 const VIEWS = { today: viewToday, prep: viewPrep, hires: viewHires, hire: viewHire, surveys: viewSurveys, survey: viewSurvey, import: viewImport, connect: viewConnect, settings: viewSettings, respond: viewRespond };
 function route() { const p = (location.hash.slice(1) || 'today').split('/'); return { v: VIEWS[p[0]] ? p[0] : 'today', a: decodeURIComponent(p[1] || ''), b: decodeURIComponent(p[2] || '') }; }
-const UI = { prepScope: 'upcoming', tq: '', towner: '', hq: '', htype: '', hstage: '', horg: '', hrisk: false };
+const UI = { formEdit: false, prepScope: 'upcoming', tq: '', towner: '', hq: '', htype: '', hstage: '', horg: '', hrisk: false };
 
 /* 사이드바 접기·펴기 (상태는 이 브라우저에 기억) */
 function setNavCollapsed(on) {
@@ -523,7 +523,7 @@ function viewSurvey(dv, id, tab) {
   return `
   <nav class="crumb"><a href="#surveys">설문</a> / ${esc(s.name)}</nav>
   <header class="page-head"><div><h1>${esc(s.name)}</h1><p class="sub">${s.audience}에게 · 입사 ${s.day}일 차 · 문항 ${s.qs.length}개</p></div>
-    <div class="head-act"><a class="btn ghost" href="#respond/preview-${s.id}" target="_blank" rel="noopener">응답 화면 미리 보기</a></div></header>
+    <div class="head-act"><a class="btn ghost" href="${s.form && s.form.url ? esc(s.form.url) : '#respond/preview-' + s.id}" target="_blank" rel="noopener">${s.form && s.form.url ? 'Google 폼 열기' : '응답 화면 미리 보기'}</a></div></header>
   <div class="tabs" role="tablist">${tabs.map(([k, l]) => `<a role="tab" aria-selected="${k === tab}" href="#survey/${s.id}/${k}">${l}</a>`).join('')}</div>
   ${tab === 'send' ? surveySend(s) : tab === 'edit' ? surveyEdit(s) : surveyResult(s)}`;
 }
@@ -532,12 +532,13 @@ function surveySend(s) {
   const targets = sendTargets(s);
   const waiting = S.sends.filter(x => x.survey === s.id && sendState(x) === '대기');
   return `
+  ${formPanel(s)}
   <section class="panel">
     <div class="panel-head"><h2>보낼 대상</h2><span class="hint">입사 ${s.day}일 차가 지났고 아직 안 보낸 사람</span></div>
     ${targets.length ? `<form id="send-form"><table class="tbl compact"><thead><tr><th class="cb"><input type="checkbox" checked data-act="check-all" aria-label="모두 선택"></th><th>입사자</th><th>받는 사람</th><th>입사일</th><th>${s.day}일 차</th></tr></thead><tbody>
       ${targets.map(h => `<tr><td class="cb"><input type="checkbox" name="k" value="${esc(h.key)}" checked aria-label="${esc(h.name)}"></td><td>${link(h)}<span class="small">${orgName(h.org)}</span></td><td>${s.audience === '매니저' ? esc(h.mgrName) + ' 매니저<span class="small">' + esc(h.mgr) + '</span>' : esc(h.email)}</td><td>${D.md(h.start)}</td><td>${D.md(D.add(h.start, s.day))}</td></tr>`).join('')}
     </tbody></table><div class="row-act"><button class="btn primary" data-act="send">선택한 사람에게 보내기</button></div></form>
-    <p class="hint">보내기를 누르면 사람마다 응답 링크가 만들어지고, 메일에 붙여넣을 안내 문구와 링크 목록이 나옵니다. 응답하면 이 화면에 바로 반영됩니다.</p>`
+    <p class="hint">보내기를 누르면 사람마다 ${s.form && s.form.url ? '이메일이 미리 채워진 Google 폼 링크' : '응답 링크'}가 만들어집니다. Gmail이 연결되어 있으면 한 사람에 한 통씩 바로 보내고, 아니면 안내 문구와 링크 목록을 복사해 보낼 수 있습니다.</p>`
     : '<p class="empty">지금 보낼 사람이 없습니다. 입사 ' + s.day + '일 차가 되면 여기에 나타납니다.</p>'}
   </section>
   <section class="panel">
@@ -552,6 +553,7 @@ function surveyResult(s) {
   const missed = x.sends.filter(y => sendState(y) === '미응답').length;
   const low = [...new Set(rs.filter(r => { const q = s.qs.find(qq => qq.q === r.q); return q && ((q.type === '점수5' && r.score <= 2) || (q.type === '예아니오' && r.answer === '예')); }).map(r => r.key))];
   return `
+  ${s.form && s.form.sheet ? `<section class="panel form-bar"><div><b>응답 시트에서 가져오기</b><span class="w-meta">Google 폼 응답이 쌓인 시트를 읽어 결과에 반영합니다. 이미 가져온 응답은 건너뜁니다.</span></div><div class="row-act"><button class="btn primary" data-act="form-pull" data-s="${s.id}">지금 가져오기</button></div></section>` : s.form && s.form.url ? '' : `<p class="hint form-hint">Google 폼을 연결하면 여기서 응답 시트를 바로 가져올 수 있습니다. <a href="#survey/${s.id}/send">보내기 탭에서 연결</a></p>`}
   <div class="kpis kpis-4">
     <div class="kpi"><span class="k-label">보낸 수</span><span class="k-val">${x.sends.length}</span></div>
     <div class="kpi"><span class="k-label">응답</span><span class="k-val">${x.answered}</span><span class="k-note">미응답 ${missed} · 대기 ${x.waiting.length}</span></div>
@@ -989,11 +991,11 @@ function actSend(sid) {
   if (!keys.length) { toast('보낼 사람을 고르세요.'); return; }
   const made = keys.map(k => { const x = { id: 'SND-' + (S.sends.length + 1) + '-' + Date.now().toString(36), survey: sid, key: k, sentAt: TODAY, token: Math.random().toString(36).slice(2, 12), respondedAt: '', via: '' }; S.sends.push(x); return x; });
   persist();
-  const rows = made.map(x => { const h = hireOf(x.key); return { h, to: s.audience === '매니저' ? h.mgr : h.email, url: respondUrl(x.token) }; });
+  const rows = made.map(x => { const h = hireOf(x.key); const to = s.audience === '매니저' ? h.mgr : h.email; return { h, to, url: s.form && s.form.url ? formLink(s, h, to) : respondUrl(x.token) }; });
   const mail = s.audience === '매니저'
     ? `[온보딩] ${s.name} 부탁드립니다\n\n매니저님, 안녕하세요. 온보딩 담당 HR입니다.\n팀에 새로 오신 분이 입사 ${s.day}일을 맞았습니다. 1분이면 끝나는 체크인에 답해 주세요.\n응답은 HR만 보며, 필요한 경우 HR이 먼저 연락드립니다.\n\n{링크}`
     : `[온보딩] 입사 ${s.day}일, 잘 지내고 계신가요?\n\n{이름} 님, 안녕하세요. 온보딩 담당 HR입니다.\n입사 ${s.day}일을 맞아 짧은 설문(2분)을 부탁드립니다.\n응답은 HR만 보며 매니저에게 개별 공개하지 않습니다.\n\n{링크}`;
-  modal(`${made.length}명에게 보낼 준비가 됐습니다`, `<p class="m-note" style="margin:0 0 8px">회사 메일의 받는 사람에 아래 주소를, 본문에 안내 문구를 넣고 <b>{링크}</b> 자리에 각자의 링크를 붙여 보내세요. 응답하면 결과에 바로 반영됩니다.</p>
+  modal(`${made.length}명에게 보낼 준비가 됐습니다`, `<p class="m-note" style="margin:0 0 8px">${s.form && s.form.url ? '링크는 사람마다 이메일이 미리 채워진 Google 폼입니다. 응답은 Google 시트에 모이고, 결과 탭의 "응답 시트에서 가져오기"로 반영합니다.' : '지금은 데모용 응답 페이지 링크입니다. 실제로 응답을 받으려면 보내기 탭 위쪽에서 Google 폼을 연결하세요.'}</p>
     <label class="fld"><span>안내 문구</span><textarea rows="7" readonly id="mail-text">${esc(mail)}</textarea></label>
     <table class="tbl compact"><thead><tr><th>입사자</th><th>받는 사람</th><th>개인 링크</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.h.name)}</td><td>${esc(r.to)}</td><td><a href="${esc(r.url)}" target="_blank" rel="noopener">링크 열기</a></td></tr>`).join('')}</tbody></table>
     ${CONN.google.clientId ? `<div class="row-act"><button type="button" class="btn primary" id="gmail-all">Gmail로 ${made.length}명에게 바로 보내기</button></div>` : `<p class="m-note"><a href="#connect">연결 설정</a>에서 Gmail을 연결하면 사람마다 다른 링크를 넣어 여기서 바로 보낼 수 있습니다.</p>`}

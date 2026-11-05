@@ -265,3 +265,58 @@ document.addEventListener('change', e => {
     $('#api-url').placeholder = api ? 'https://hr.회사.com/api/v1/employees?status=new' : 'https://docs.google.com/spreadsheets/d/…';
   }
 });
+
+/* ───────── 설문 응답을 Google 폼으로 받기 ─────────
+   s.form = { url: 사전 입력 링크, sheet: 응답 시트 주소 }
+   사전 입력 링크의 entry 값 중 '@'가 있는 것은 받는 사람 이메일로, 나머지는 입사자 이름으로 바꿔 넣는다. */
+function formLink(s, h, to) {
+  try {
+    const u = new URL(s.form.url);
+    [...u.searchParams.keys()].filter(k => /^entry\./.test(k)).forEach(k => u.searchParams.set(k, u.searchParams.get(k).includes('@') ? to : h.name));
+    if (!u.searchParams.has('usp')) u.searchParams.set('usp', 'pp_url');
+    return u.toString();
+  } catch (e) { return s.form.url; }
+}
+function formPanel(s) {
+  const f = s.form || {}, mgr = s.audience === '매니저';
+  if (f.url && !UI.formEdit) return `<section class="panel form-bar">
+    <div><b>응답 받는 곳: Google 폼</b><span class="w-meta">메일 속 링크는 이메일${mgr ? '·입사자 이름' : ''}이 미리 채워진 Google 폼으로 갑니다. ${f.sheet ? '응답 시트 연결됨 · 결과 탭에서 가져옵니다.' : '<b class="warn-t">응답 시트가 아직 없습니다.</b>'}</span></div>
+    <div class="row-act"><a class="btn ghost" href="${esc(f.url)}" target="_blank" rel="noopener">폼 열기</a><button class="btn ghost" data-act="form-edit">바꾸기</button></div></section>`;
+  return `<section class="panel form-setup">
+    <div class="panel-head"><h2>응답 받는 곳</h2>${f.url ? '' : '<span class="sg sg-warn">아직 Google 폼 없음</span>'}</div>
+    <p class="hint">${f.url ? '' : '지금은 데모용 응답 페이지로 보냅니다. 이 페이지는 응답이 <b>입사자 브라우저에만</b> 저장되어 HR 화면으로 돌아오지 않습니다. '}Google 폼을 연결하면 응답이 Google 시트에 모이고, 결과 탭에서 한 번에 가져올 수 있습니다.</p>
+    <div class="fld-2">
+      <label class="fld"><span>Google 폼 사전 입력 링크</span><input id="form-url" value="${esc(f.url || '')}" placeholder="https://docs.google.com/forms/d/e/…/viewform?usp=pp_url&amp;entry.…=test@test.com"></label>
+      <label class="fld"><span>응답 시트 주소</span><input id="form-sheet" value="${esc(f.sheet || '')}" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
+    </div>
+    <div class="row-act"><button class="btn primary" data-act="form-save" data-s="${s.id}">저장</button>${f.url ? '<button class="btn ghost" data-act="form-cancel">취소</button>' : ''}<button class="btn ghost" data-act="copy-qs" data-s="${s.id}">Google 폼에 넣을 문항 복사</button></div>
+    <details class="howto"><summary>Google 폼 연결하는 법</summary><ol>
+      <li>Google 폼을 새로 만들고, 첫 문항으로 <b>이메일</b>(단답형)을 넣습니다.${mgr ? ' 두 번째로 <b>입사자 이름</b>(단답형)을 넣습니다.' : ''}</li>
+      <li>나머지 문항은 "Google 폼에 넣을 문항 복사"로 복사한 문구를 <b>그대로</b> 씁니다. 문구가 같아야 결과를 가져올 때 자동으로 맞춰집니다.</li>
+      <li>폼 오른쪽 위 ⋮ → <b>사전 입력된 링크 가져오기</b> → 이메일 칸에 <code>test@test.com</code>${mgr ? ', 입사자 이름 칸에 <code>홍길동</code>' : ''}을 넣고 <b>링크 가져오기 → 링크 복사</b>를 누른 뒤 위 첫 칸에 붙여넣습니다.</li>
+      <li>폼의 <b>응답</b> 탭 → <b>Sheets에 연결</b>로 시트를 만들고, 그 시트 주소를 위 둘째 칸에 붙여넣습니다. 시트는 "링크가 있는 모든 사용자"로 공유하거나, 설정 → 연결에서 Google을 연결해 두면 읽을 수 있습니다.</li>
+    </ol><p class="hint">보낼 때는 대시보드가 사람마다 이메일${mgr ? '·입사자 이름' : ''}을 바꿔 넣은 링크를 만들어, 한 사람에 한 통씩 보냅니다.</p></details>
+  </section>`;
+}
+function pullSurveySheet(s) {
+  IMP = { src: 'survey', surveyId: s.id };
+  location.hash = '#import/survey';
+  pullSource('survey', { kind: 'sheet', url: s.form.sheet }, false);
+}
+Object.assign(CONNECT_ACTS, {
+  'form-edit': () => { UI.formEdit = true; render(); },
+  'form-cancel': () => { UI.formEdit = false; render(); },
+  'form-save': b => {
+    const s = S.surveys.find(x => x.id === b.dataset.s), url = $('#form-url').value.trim(), sheet = $('#form-sheet').value.trim();
+    if (!url) { delete s.form; UI.formEdit = false; save(); toast('Google 폼 연결을 지웠습니다. 데모용 응답 페이지로 보냅니다.'); return; }
+    if (!/docs\.google\.com\/forms\//.test(url) || !/entry\.\d+=/.test(url)) { toast('사전 입력 링크가 아닙니다. "사전 입력된 링크 가져오기"로 만든 링크를 붙여넣어 주세요.'); return; }
+    if (sheet && !sheetIds(sheet)) { toast('응답 시트 주소가 Google 시트 주소가 아닙니다.'); return; }
+    s.form = { url, sheet }; UI.formEdit = false; save(); toast('Google 폼을 연결했습니다. 이제 메일 속 링크가 이 폼으로 갑니다.');
+  },
+  'copy-qs': b => {
+    const s = S.surveys.find(x => x.id === b.dataset.s);
+    const TL = { 점수5: '1~5점 척도', 추천10: '0~10점 척도', 예아니오: '예 / 아니오 객관식', 텍스트: '장문형' };
+    copy(['이메일 (단답형)', ...(s.audience === '매니저' ? ['입사자 이름 (단답형)'] : []), ...s.qs.map(q => `${q.text} (${TL[q.type] || q.type})`)].join('\n'), '문항 목록을 복사했습니다. Google 폼에 그대로 넣으세요.');
+  },
+  'form-pull': b => { const s = S.surveys.find(x => x.id === b.dataset.s); if (!s.form || !s.form.sheet) { toast('응답 시트 주소를 먼저 넣어 주세요.'); return; } pullSurveySheet(s); },
+});

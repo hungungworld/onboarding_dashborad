@@ -369,3 +369,12 @@ a.btn { text-decoration: none; }
 .conn-howto { grid-column: 1 / -1; border-top: 1px solid var(--line-2); padding-top: 12px; }
 .conn-howto .howto { margin: 0; }
 .conn-howto .howto ol { max-width: 820px; }
+
+/* ── 설문: Google 폼 연결 ── */
+.form-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px 24px; flex-wrap: wrap; }
+.form-bar > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.form-bar .row-act { margin: 0; }
+.form-setup .hint { margin: 0 0 12px; }
+.form-setup .howto { margin-top: 12px; }
+.form-hint { margin: 0 0 12px; }
+.sg-warn { background: var(--warn-soft); color: var(--warn); }
