@@ -328,7 +328,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; m
 .set-head + .day-tabs + .page-head .sub { margin: 0; }
 
 /* 현황판 항목 머리글: 이름은 위, 'N명'은 아래에 줄 맞춤 */
-.matrix .m-col { vertical-align: top; position: relative; padding-bottom: 32px; }
+.matrix .m-col { vertical-align: top; padding-bottom: 32px; } /* sticky 칸이라 relative를 주면 top 값만큼 밀려 내려간다 */
 .matrix .m-col .m-copy, .matrix .m-col .m-alldone { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); margin: 0; white-space: nowrap; }
 
 /* ── 연결 설정: 한 줄에 하나 (왼쪽 설명, 오른쪽 입력) ── */
@@ -384,3 +384,4 @@ a.btn { text-decoration: none; }
 .form-bar.is-dirty { border-color: var(--warn); background: #fffbf0; }
 #survey-edit { margin-top: 0; }
 .form-bar + #survey-edit, .form-bar + .panel { margin-top: 16px; }
+.up-hol { background: var(--line-2); color: var(--sub); }

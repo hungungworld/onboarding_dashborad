@@ -63,6 +63,21 @@ const DEFAULT_SURVEYS = [
 const SURVEY_WINDOW = 14; // 발송 후 14일이 지나면 미응답으로 본다
 
 /* ───────── 날짜 ───────── */
+/* 한국 공휴일 (대체공휴일·선거일·근로자의 날 포함). 입사일과 기한이 쉬는 날에 걸리지 않도록 쓴다. */
+const KR_HOLIDAYS = {
+  '2025-01-01': '신정', '2025-01-27': '임시공휴일', '2025-01-28': '설날 연휴', '2025-01-29': '설날', '2025-01-30': '설날 연휴',
+  '2025-03-01': '삼일절', '2025-03-03': '대체공휴일', '2025-05-01': '근로자의 날', '2025-05-05': '어린이날·부처님오신날', '2025-05-06': '대체공휴일',
+  '2025-06-03': '대통령 선거일', '2025-06-06': '현충일', '2025-08-15': '광복절', '2025-10-03': '개천절',
+  '2025-10-05': '추석 연휴', '2025-10-06': '추석', '2025-10-07': '추석 연휴', '2025-10-08': '대체공휴일', '2025-10-09': '한글날', '2025-12-25': '성탄절',
+  '2026-01-01': '신정', '2026-02-16': '설날 연휴', '2026-02-17': '설날', '2026-02-18': '설날 연휴',
+  '2026-03-01': '삼일절', '2026-03-02': '대체공휴일', '2026-05-01': '노동절', '2026-05-05': '어린이날', '2026-05-24': '부처님오신날', '2026-05-25': '대체공휴일',
+  '2026-06-03': '지방선거일', '2026-06-06': '현충일', '2026-07-17': '제헌절', '2026-08-15': '광복절', '2026-08-17': '대체공휴일',
+  '2026-09-24': '추석 연휴', '2026-09-25': '추석', '2026-09-26': '추석 연휴', '2026-10-03': '개천절', '2026-10-05': '대체공휴일', '2026-10-09': '한글날', '2026-12-25': '성탄절',
+  '2027-01-01': '신정', '2027-02-06': '설날 연휴', '2027-02-07': '설날', '2027-02-08': '설날 연휴', '2027-02-09': '대체공휴일',
+  '2027-03-01': '삼일절', '2027-05-01': '노동절', '2027-05-05': '어린이날', '2027-05-13': '부처님오신날', '2027-06-06': '현충일', '2027-07-17': '제헌절',
+  '2027-08-15': '광복절', '2027-08-16': '대체공휴일', '2027-09-14': '추석 연휴', '2027-09-15': '추석', '2027-09-16': '추석 연휴',
+  '2027-10-03': '개천절', '2027-10-04': '대체공휴일', '2027-10-09': '한글날', '2027-10-11': '대체공휴일', '2027-12-25': '성탄절', '2027-12-27': '대체공휴일',
+};
 const D = {
   today() { const d = new Date(); return D.fmt(d.getFullYear(), d.getMonth() + 1, d.getDate()); },
   fmt(y, m, d) { return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0'); },
@@ -81,14 +96,23 @@ const D = {
     const m = String(v).trim().match(/^(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})/);
     return m ? D.fmt(+m[1], +m[2], +m[3]) : '';
   },
+  holiday(s) { return KR_HOLIDAYS[s] || ''; },
+  isWorkday(s) { const w = new Date(D.n(s) * 864e5).getUTCDay(); return w !== 0 && w !== 6 && !KR_HOLIDAYS[s]; },
+  nextWork(s) { while (!D.isWorkday(s)) s = D.add(s, 1); return s; },
+  prevWork(s) { while (!D.isWorkday(s)) s = D.add(s, -1); return s; },
 };
 
 /* ───────── 규칙 ───────── */
 function probationEnd(h, months) { return D.add(D.addMonths(h.start, months || 3), -1); }
+/* 기한이 주말·공휴일에 걸리면:
+   - 법정 신고 기한은 다음 근무일 (기간의 말일이 공휴일이면 그 다음 날 만료)
+   - 입사 전 준비와 수습 평가는 앞당겨 직전 근무일
+   - 입사 후 일은 다음 근무일 */
 function dueOf(t, h, settings) {
-  if (t.rule === 'nextMonth15') { const p = h.start.split('-').map(Number); return p[1] === 12 ? D.fmt(p[0] + 1, 1, 15) : D.fmt(p[0], p[1] + 1, 15); }
-  if (t.rule === 'probation') return D.add(probationEnd(h, settings.probationMonths), -5);
-  return D.add(h.start, t.offset);
+  if (t.rule === 'nextMonth15') { const p = h.start.split('-').map(Number); return D.nextWork(p[1] === 12 ? D.fmt(p[0] + 1, 1, 15) : D.fmt(p[0], p[1] + 1, 15)); }
+  if (t.rule === 'probation') return D.prevWork(D.add(probationEnd(h, settings.probationMonths), -5));
+  const d = D.add(h.start, t.offset);
+  return t.offset < 0 ? D.prevWork(d) : D.nextWork(d);
 }
 function taskStatus(t, today) {
   if (t.closed) return '종료';
@@ -143,7 +167,7 @@ function buildDemo(today) {
   let ni = 0;
   const JOBS = { FRD: '제품 개발', BSL: 'B2B 영업', FIN: '회계', HRM: 'HR 운영', MKT: '브랜드 마케팅', PEN: '공정 기술', DXO: '데이터 분석' };
   const add = (type, cohort, offset, org, rank) => {
-    const start = D.add(today, offset);
+    const start = D.nextWork(D.add(today, offset)); // 입사일은 근무일로
     const m = MANAGERS[org], n = ni++;
     const h = { key: newKey(hires, start), empNo: offset <= -10 ? 'E' + start.slice(2, 4) + String(1000 + n).slice(1) : '', name: NAMES[n], email: 'user' + (n + 1) + '@mail-demo.kr',
       start, type, cohort, org, job: JOBS[org], rank, site: org === 'FRD' ? '연구소' : org === 'PEN' ? '공장' : '본사', mgr: m[1], mgrName: m[0],

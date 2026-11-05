@@ -251,6 +251,7 @@ function upcoming(info) {
     Object.entries(by).forEach(([d, l]) => at(d).items.push(['survey', '설문', `${esc(s.name)} 발송 · ${l.length}명`, names(l.map(h => h.name))]));
   });
   days.forEach(x => { if (x.join) x.items.unshift(['join', '입사', `${x.join.length}명 입사`, names(x.join.map(h => h.name + ' (' + orgName(h.org) + ')'))]); });
+  days.forEach(x => { const hn = D.holiday(x.d); if (hn) x.items.push(['hol', '휴일', esc(hn), '입사일·기한은 이날을 피해 잡혀 있습니다']); });
   const rel = i => i === 0 ? '오늘' : i === 1 ? '내일' : i === 2 ? '모레' : i + '일 후';
   const all = days.map((x, i) => [x, i]).filter(([x]) => x.items.length), list = all.slice(0, 6);
   return `<aside class="panel up-panel" aria-label="앞으로 2주 일정">
