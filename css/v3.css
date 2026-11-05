@@ -332,7 +332,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; m
 .matrix .m-col .m-copy, .matrix .m-col .m-alldone { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); margin: 0; white-space: nowrap; }
 
 /* ── 연결 설정: 한 줄에 하나 (왼쪽 설명, 오른쪽 입력) ── */
-.conn-list { display: flex; flex-direction: column; gap: 16px; max-width: 1100px; }
+.conn-list { display: flex; flex-direction: column; gap: 16px; }
 .conn-row { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px 40px; align-items: start; }
 .conn-title { display: flex; align-items: center; gap: 8px; }
 .conn-title h2 { font-size: 15.5px; margin: 0; }
