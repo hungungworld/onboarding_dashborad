@@ -201,10 +201,10 @@ function apiBox(src) {
 /* ───────── 연결 설정 화면 ───────── */
 function viewConnect() {
   const ok = v => v ? '<span class="sg sg-ok">연결됨</span>' : '<span class="sg sg-off">연결 안 됨</span>';
-  // 한 줄에 하나씩: 왼쪽은 무엇·왜·만드는 법, 오른쪽은 넣을 칸 (높이를 맞출 필요가 없는 배치)
+  // 한 줄에 하나씩: 왼쪽은 무엇·왜, 오른쪽은 넣을 칸, 만드는 법은 상자 맨 아래에 가로로 펼침
   const row = (title, status, hint, howto, fields) => `<section class="panel conn-row">
-      <div class="conn-info"><div class="conn-title"><h2>${title}</h2>${status}</div><p class="hint">${hint}</p>${howto}</div>
-      <div class="conn-fields">${fields}</div></section>`;
+      <div class="conn-info"><div class="conn-title"><h2>${title}</h2>${status}</div><p class="hint">${hint}</p></div>
+      <div class="conn-fields">${fields}</div>${howto ? `<div class="conn-howto">${howto}</div>` : ''}</section>`;
   return `
   ${setupHead('connect')}
   <header class="page-head"><div><p class="sub">Gmail·Slack으로 바로 보내고, Google 시트·API에서 바로 가져오도록 연결합니다. 모두 무료로 쓸 수 있습니다.</p></div></header>

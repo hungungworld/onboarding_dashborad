@@ -365,3 +365,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; m
 .up-survey { background: var(--issue-soft); color: var(--issue); }
 a.btn { text-decoration: none; }
 .up-more { margin: 10px 0 0; font-size: 12.5px; color: var(--sub); }
+/* '만드는 법'은 상자 맨 아래 전체 폭으로 */
+.conn-howto { grid-column: 1 / -1; border-top: 1px solid var(--line-2); padding-top: 12px; }
+.conn-howto .howto { margin: 0; }
+.conn-howto .howto ol { max-width: 820px; }
