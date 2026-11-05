@@ -267,7 +267,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; m
 .asked { font-size: 12px; color: var(--ok); white-space: nowrap; }
 .sg-ok { background: var(--ok-soft); color: var(--ok); }
 .sg-off { background: var(--line-2); color: var(--sub); }
-.conn-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.conn-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
 @media (max-width: 1100px) { .conn-grid { grid-template-columns: 1fr; } }
 .conn-grid .panel-head .hint { flex-basis: 100%; margin: 0; }
 .conn-grid .fld { margin-bottom: 12px; }
