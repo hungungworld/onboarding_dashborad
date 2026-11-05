@@ -275,6 +275,17 @@ LMS에서 수강 후 수료까지 완료해 주세요. (이미 들으셨다면 �
 function prepColumns() {
   return S.template.filter(t => t.active && ['서류', '체크', '버디'].includes(t.kind) && t.offset <= 3 && !t.rule);
 }
+/* 현황판 묶음: HR 담당자가 보는 화면이라 입사자 다음에 HR(나)을 둔다 */
+const PREP_GROUPS = [['입사자', '입사 서류', '입사자'], ['HR', '안내·첫날', 'HR (나)'], ['매니저', '팀 합류 준비', '매니저'], ['IT', '계정·장비', 'IT'], ['총무', '자리·출입·명함', '총무']];
+const PREP_OPEN_KEY = 'onboarding-prep-open';
+UI.prepOpen = (() => { try { return JSON.parse(localStorage.getItem(PREP_OPEN_KEY)) || []; } catch (e) { return []; } })();
+UI.prepHide = false;
+function togglePrepGroup(o) {
+  const i = UI.prepOpen.indexOf(o);
+  if (i < 0) UI.prepOpen.push(o); else UI.prepOpen.splice(i, 1);
+  try { localStorage.setItem(PREP_OPEN_KEY, JSON.stringify(UI.prepOpen)); } catch (e) { /* 저장 불가 */ }
+  render();
+}
 function viewPrep(dv) {
   const { st, info } = dv;
   const cohorts = [...new Set(S.hires.filter(h => h.cohort).map(h => h.cohort))];
@@ -283,13 +294,34 @@ function viewPrep(dv) {
   else hs = S.hires.filter(h => h.cohort === UI.prepScope && h.status !== '입사 취소');
   hs.sort((a, b) => D.n(a.start) - D.n(b.start) || a.name.localeCompare(b.name));
   const cols = prepColumns();
-  const owners = OWNERS.filter(o => cols.some(c => c.owner === o));
   const taskOf = (h, c) => S.tasks.find(t => t.key === h.key && t.code === c.code);
   const pendingOf = c => hs.map(h => taskOf(h, c)).filter(t => t && !t.done && !t.closed);
+  const groups = PREP_GROUPS.map(([o, name, who]) => {
+    const all = cols.filter(c => c.owner === o);
+    const shown = UI.prepHide ? all.filter(c => pendingOf(c).length) : all;
+    return { o, name, who, all, shown, open: UI.prepOpen.includes(o) && shown.length > 0 };
+  }).filter(g => g.all.length);
+  const leftPeople = g => hs.filter(h => g.all.some(c => { const t = taskOf(h, c); return t && !t.done && !t.closed; })).length;
+  const head = g => { const n = leftPeople(g);
+    return `<button type="button" class="gh-btn" data-act="prep-group" data-o="${g.o}" aria-expanded="${g.open}" title="누르면 ${g.open ? '접힙니다' : '항목별로 펼쳐집니다'}">
+      <span class="chev" aria-hidden="true">▶</span><span class="gh-name">${g.name}</span><span class="gh-who">${g.who}</span>${g.open ? '' : `<span class="gh-cnt ${n ? '' : 'ok'}">${n ? n + '명 남음' : '완료'}</span>`}</button>`; };
+  const cellOf = (h, c) => {
+    const t = taskOf(h, c);
+    if (!t || t.closed) return '<td class="c c-na" title="해당 없음">–</td>';
+    const s = st.get(t.id);
+    const sym = { 완료: '✓', 지연: '!', 문제: '?', 진행: '·', 대기: '' }[s];
+    return `<td class="c c-${STC[s]}"><button data-act="toggle" data-id="${esc(t.id)}" title="${esc(c.title)} · ${s}${t.memo ? ' · ' + esc(t.memo) : ''} · ${D.md(t.due)}까지">${sym}</button></td>`;
+  };
+  const sumOf = (h, g) => {
+    const ts = g.all.map(c => taskOf(h, c)).filter(t => t && !t.closed);
+    if (!ts.length) return '<td class="g-sum c-na">–</td>';
+    const done = ts.filter(t => t.done).length, late = ts.filter(t => st.get(t.id) === '지연').length, iss = ts.filter(t => st.get(t.id) === '문제').length;
+    return `<td class="g-sum"><button type="button" data-act="prep-group" data-o="${g.o}" title="${g.name} 펼치기"><span class="frac ${done === ts.length ? 'full' : ''}">${done}/${ts.length}</span>${late ? `<i class="c c-bad">!${late > 1 ? ' ' + late : ''}</i>` : ''}${iss ? `<i class="c c-issue">?${iss > 1 ? ' ' + iss : ''}</i>` : ''}</button></td>`;
+  };
 
   return `
   <header class="page-head">
-    <div><h1>입사 준비 현황판</h1><p class="sub">칸을 누르면 완료로 표시됩니다. 항목 이름 아래 숫자를 누르면 아직 안 된 사람 명단을 복사합니다.</p></div>
+    <div><h1>입사 준비 현황판</h1><p class="sub">담당 이름을 누르면 항목별로 펼쳐집니다. 칸을 누르면 완료로 표시되고, 항목 아래 빨간 숫자를 누르면 아직 안 된 사람 명단을 복사합니다.</p></div>
     <div class="head-act">
       <select data-f="prepScope" aria-label="범위">
         <option value="upcoming" ${UI.prepScope === 'upcoming' ? 'selected' : ''}>입사 30일 전 ~ 입사 첫 주</option>
@@ -297,20 +329,17 @@ function viewPrep(dv) {
       </select>
     </div>
   </header>
-  <div class="legend"><span><i class="c c-ok">✓</i>완료</span><span><i class="c c-now">·</i>진행 (기한 다가옴)</span><span><i class="c c-wait"></i>대기</span><span><i class="c c-bad">!</i>기한 지남</span><span><i class="c c-issue">?</i>문제 메모</span><span><i class="c c-na">–</i>해당 없음</span></div>
-  <section class="panel flush"><div class="scroll matrix-wrap"><table class="matrix">
+  <div class="prep-top">
+    <div class="legend"><span><i class="c c-ok">✓</i>완료</span><span><i class="c c-now">·</i>진행 (기한 다가옴)</span><span><i class="c c-wait"></i>대기</span><span><i class="c c-bad">!</i>기한 지남</span><span><i class="c c-issue">?</i>문제 메모</span><span><i class="c c-na">–</i>해당 없음</span></div>
+    <label class="check"><input type="checkbox" data-f="prepHide" ${UI.prepHide ? 'checked' : ''}> 모두 끝난 항목 숨기기</label>
+  </div>
+  <section class="panel flush"><div class="scroll matrix-wrap"><table class="matrix grouped">
     <thead>
-      <tr><th rowspan="2" class="m-name">입사자</th><th rowspan="2">입사일</th>${owners.map(o => `<th colspan="${cols.filter(c => c.owner === o).length}" class="m-owner">${o === '입사자' ? '입사 서류 (입사자)' : o}</th>`).join('')}<th rowspan="2">진행</th><th rowspan="2"></th></tr>
-      <tr>${owners.map(o => cols.filter(c => c.owner === o).map(c => { const n = pendingOf(c).length; return `<th class="m-col"><span>${esc(shortTitle(c.title))}</span>${n ? `<button class="m-copy" data-act="copy-col" data-code="${c.code}" title="미완료 명단 복사">${n}명</button>` : '<span class="m-alldone">완료</span>'}</th>`; }).join('')).join('')}</tr>
+      <tr><th rowspan="2" class="m-name">입사자</th><th rowspan="2">입사일</th>${groups.map(g => g.open ? `<th colspan="${g.shown.length}" class="m-owner gh open">${head(g)}</th>` : `<th rowspan="2" class="m-owner gh">${head(g)}</th>`).join('')}<th rowspan="2">진행</th><th rowspan="2"></th></tr>
+      <tr>${groups.filter(g => g.open).map(g => g.shown.map((c, j) => { const n = pendingOf(c).length; return `<th class="m-col ${j ? '' : 'gs'}"><span>${esc(shortTitle(c.title))}</span>${n ? `<button class="m-copy" data-act="copy-col" data-code="${c.code}" title="미완료 명단 복사">${n}명</button>` : '<span class="m-alldone">완료</span>'}</th>`; }).join('')).join('')}</tr>
     </thead>
     <tbody>${hs.map(h => {
-      const cells = owners.map(o => cols.filter(c => c.owner === o).map(c => {
-        const t = taskOf(h, c);
-        if (!t || t.closed) return '<td class="c c-na" title="해당 없음">–</td>';
-        const s = st.get(t.id);
-        const sym = { 완료: '✓', 지연: '!', 문제: '?', 진행: '·', 대기: '' }[s];
-        return `<td class="c c-${STC[s]}"><button data-act="toggle" data-id="${esc(t.id)}" title="${esc(c.title)} · ${s}${t.memo ? ' · ' + esc(t.memo) : ''} · ${D.md(t.due)}까지">${sym}</button></td>`;
-      }).join('')).join('');
+      const cells = groups.map(g => g.open ? g.shown.map((c, j) => cellOf(h, c).replace('<td class="c', `<td class="${j ? '' : 'gs '}c`)).join('') : sumOf(h, g)).join('');
       const pre = info.get(h.key).live.filter(t => cols.some(c => c.code === t.code));
       const done = pre.filter(t => t.done).length;
       const docsMissing = S.tasks.some(t => t.key === h.key && t.kind === '서류' && !t.done && !t.closed);
@@ -931,6 +960,7 @@ document.addEventListener('click', e => {
     'survey-save': () => { readSurveyForm(sv); if (!sv.qs.length) { toast('문항을 하나 이상 넣어 주세요.'); return; } save(); toast('설문을 저장했습니다.'); },
     sample: () => downloadSample(b.dataset.src),
     'paste-toggle': () => { const box = $('#paste-box'), open = box.hidden; box.hidden = !open; b.setAttribute('aria-expanded', open); b.classList.toggle('on', open); if (open) $('#imp-paste').focus(); },
+    'prep-group': () => togglePrepGroup(b.dataset.o),
     'nav-toggle': () => setNavCollapsed(!document.body.classList.contains('nav-collapsed')),
     'imp-paste': () => { const t = $('#imp-paste').value; if (!t.trim()) { toast('붙여넣은 내용이 없습니다.'); return; } loadGrid(parseText(t), '붙여넣기'); },
     'imp-reset': () => { IMP = null; render(); }, 'imp-plan': makePlan, 'imp-back': () => { IMP.plan = null; render(); }, 'imp-apply': applyPlan,

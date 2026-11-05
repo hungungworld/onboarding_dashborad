@@ -278,3 +278,31 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; m
 .howto li { margin: 4px 0; }
 .howto code { background: var(--line-2); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; word-break: break-all; }
 .muted { color: var(--mute); }
+
+/* ── 입사 준비 현황판: 담당별 접기·펼치기 ── */
+.prep-top { display: flex; justify-content: space-between; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.prep-top .legend { margin-bottom: 0; }
+.matrix.grouped thead th.gh { padding: 0; text-align: left; vertical-align: top; border-left: 2px solid #d5d9e0; }
+.gh-btn { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 40px; padding: 8px 12px; border: 0; background: none; font: inherit; color: var(--ink); cursor: pointer; text-align: left; white-space: nowrap; }
+.gh-btn:hover { background: #f2f5ff; }
+.gh-btn .chev { display: inline-block; width: 12px; font-size: 10px; color: var(--mute); transition: transform .15s; }
+.gh-btn[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.gh-name { font-size: 13.5px; font-weight: 700; }
+.gh-who { font-size: 12px; font-weight: 400; color: var(--mute); }
+.gh-cnt { margin-left: auto; padding-left: 12px; font-size: 12px; font-weight: 700; color: var(--bad); }
+.gh-cnt.ok { color: var(--ok); }
+.matrix.grouped .gs { border-left: 2px solid #d5d9e0; }
+.matrix.grouped thead tr:nth-child(2) th { top: 41px; }
+.matrix td.g-sum { padding: 3px; border-left: 2px solid #d5d9e0; }
+.g-sum button { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 28px; border: 0; background: none; border-radius: 6px; cursor: pointer; font: inherit; }
+.g-sum button:hover { background: #f2f5ff; }
+.g-sum .frac { font-weight: 600; font-variant-numeric: tabular-nums; }
+.g-sum .frac.full { color: var(--ok); }
+.g-sum .c { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; font-style: normal; font-weight: 700; font-size: 12px; }
+.c-bad.c, .g-sum .c-bad { background: var(--bad-soft); color: var(--bad); }
+.g-sum .c-issue { background: var(--issue-soft); color: var(--issue); }
+/* 화면이 넓으면 한 줄, 좁으면 숫자만 아래 줄로 내려가게 */
+.matrix.grouped { width: 100%; }
+.gh-btn { flex-wrap: wrap; row-gap: 2px; white-space: normal; }
+.gh-btn > span { white-space: nowrap; }
+.matrix.grouped .m-name { min-width: 130px; }
