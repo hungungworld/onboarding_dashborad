@@ -321,3 +321,8 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; m
 .cellpop textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; resize: vertical; }
 .cp-row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
 .matrix td.c button.sel { outline: 2px solid var(--ink); }
+
+/* ── 설정 탭 ── */
+.set-head { margin-bottom: 8px; }
+.set-head + .day-tabs + .page-head { margin-bottom: 16px; }
+.set-head + .day-tabs + .page-head .sub { margin: 0; }

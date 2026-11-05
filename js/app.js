@@ -112,7 +112,7 @@ function render() {
   const { v, a, b } = route();
   document.body.classList.toggle('respond-mode', v === 'respond');
   const dv = derive();
-  document.querySelectorAll('.nav a').forEach(x => x.classList.toggle('on', x.dataset.v === ({ hire: 'hires', survey: 'surveys' }[v] || v)));
+  document.querySelectorAll('.nav a').forEach(x => x.classList.toggle('on', x.dataset.v === ({ hire: 'hires', survey: 'surveys', import: 'setup', connect: 'setup', settings: 'setup' }[v] || v)));
   const late = S.tasks.filter(t => dv.st.get(t.id) === '지연' || dv.st.get(t.id) === '문제').length;
   $('#badge-today').textContent = late || '';
   const waiting = S.surveys.filter(s => s.active).reduce((n, s) => n + sendTargets(s).length, 0);
@@ -615,12 +615,19 @@ const SOURCES = {
 };
 let IMP = null; // { src, file, head, rows, map, surveyId, plan }
 
+/* 설정: 데이터 가져오기 · 연결 · 체크리스트를 한 메뉴 아래 탭으로 */
+const SETUP_TABS = [['import', '데이터 가져오기'], ['connect', '연결'], ['settings', '체크리스트']];
+function setupHead(cur) {
+  return `<header class="page-head set-head"><div><h1>설정</h1></div></header>
+  <nav class="day-tabs" aria-label="설정">${SETUP_TABS.map(([k, l]) => `<a href="#${k}" class="${k === cur ? 'on' : ''}"${k === cur ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>`;
+}
 function viewImport(dv, src) {
   if (!SOURCES[src]) src = '';
   const cards = Object.keys(SOURCES).map(k => { const m = SOURCES[k], at = S.lastImport[k];
     return `<a class="src ${k === src ? 'on' : ''}" href="#import/${k}"><b>${m.name}</b><span class="w-meta">${esc(m.from.split(' → ')[0])} · ${at ? D.md(at) + ' 가져옴' : '가져온 적 없음'}${CONN.sources[k] ? ' · 연결됨' : ''}</span></a>`; }).join('');
   return `
-  <header class="page-head"><div><h1>데이터 가져오기</h1><p class="sub">이미 쓰고 있는 시스템에서 엑셀을 내려받아 올리거나, Google 시트·API로 연결해 바로 받아옵니다. 열 이름이 달라도 맞춰서 읽습니다.</p></div></header>
+  ${setupHead('import')}
+  <header class="page-head"><div><p class="sub">이미 쓰고 있는 시스템에서 엑셀을 내려받아 올리거나, Google 시트·API로 연결해 바로 받아옵니다. 열 이름이 달라도 맞춰서 읽습니다.</p></div></header>
   <div class="import-grid">
     <nav class="srcs" aria-label="가져올 데이터">${cards}</nav>
     <section class="panel">${src ? importPanel(src) : `<p class="empty">왼쪽에서 가져올 데이터를 고르세요.</p>`}</section>
@@ -859,7 +866,8 @@ function viewSettings() {
     (!q || [t.title, t.code, t.owner, t.kind, t.target, t.link].some(v => String(v || '').toLowerCase().includes(q))));
   const owners = [...new Set(S.template.map(t => t.owner))];
   return `
-  <header class="page-head"><div><h1>체크리스트 설정</h1><p class="sub">입사자가 추가되면 이 목록대로 할 일과 기한이 만들어집니다. 바꾼 내용은 앞으로 추가되는 입사자부터 적용됩니다.</p></div>
+  ${setupHead('settings')}
+  <header class="page-head"><div><p class="sub">입사자가 추가되면 이 목록대로 할 일과 기한이 만들어집니다. 바꾼 내용은 앞으로 추가되는 입사자부터 적용됩니다.</p></div>
     <div class="head-act"><button class="btn primary" data-act="tpl-edit" data-i="-1">항목 추가</button></div></header>
   <div class="filters">
     <input type="search" placeholder="항목 이름, 코드, 방식, 대상" value="${esc(UI.tq)}" data-f="tq" aria-label="체크리스트 검색">

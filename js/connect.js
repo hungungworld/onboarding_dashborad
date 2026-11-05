@@ -202,7 +202,8 @@ function apiBox(src) {
 function viewConnect() {
   const ok = v => v ? '<span class="sg sg-ok">연결됨</span>' : '<span class="sg sg-off">연결 안 됨</span>';
   return `
-  <header class="page-head"><div><h1>연결 설정</h1><p class="sub">Gmail·Slack으로 바로 보내고, Google 시트·API에서 바로 가져오도록 연결합니다. 모두 무료로 쓸 수 있습니다.</p></div></header>
+  ${setupHead('connect')}
+  <header class="page-head"><div><p class="sub">Gmail·Slack으로 바로 보내고, Google 시트·API에서 바로 가져오도록 연결합니다. 모두 무료로 쓸 수 있습니다.</p></div></header>
   <form id="conn-form" class="conn-grid">
     <section class="panel">
       <div class="panel-head"><h2>Google</h2>${ok(CONN.google.clientId)}<span class="hint">Gmail로 보내기 · 공유하지 않은 시트 읽기</span></div>
