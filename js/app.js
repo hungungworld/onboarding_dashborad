@@ -228,7 +228,37 @@ function viewToday(dv, tab) {
   <nav class="day-tabs" role="tablist" aria-label="오늘 할 일 구분">
     ${TODAY_TABS.map(([k, label]) => `<a role="tab" href="#today/${k}" aria-selected="${k === tab}" class="${k === tab ? 'on' : ''}">${label}<span class="tab-n ${counts[k][1]}">${counts[k][0]}</span></a>`).join('')}
   </nav>
-  <section class="panel tab-panel" role="tabpanel">${body[tab]()}</section>`;
+  <div class="today-grid">
+    <section class="panel tab-panel" role="tabpanel">${body[tab]()}</section>
+    ${upcoming(info)}
+  </div>`;
+}
+
+/* 오른쪽: 앞으로 2주 일정 (입사, 법정·규정 기한, 설문 발송일) — 날짜별로 미리 보기 */
+function upcoming(info) {
+  const names = l => l.length > 3 ? l.slice(0, 3).join(', ') + ' 외 ' + (l.length - 3) + '명' : l.join(', ');
+  const days = [];
+  for (let i = 0; i <= 14; i++) days.push({ d: D.add(TODAY, i), items: [] });
+  const at = d => days.find(x => x.d === d);
+  const act = S.hires.filter(isActive);
+  act.forEach(h => { const x = at(h.start); if (x) (x.join = x.join || []).push(h); });
+  const dl = {};
+  S.tasks.filter(t => t.rule && !t.done && !t.closed && isActive(hireOf(t.key) || {})).forEach(t => { if (at(t.due)) { const k = t.due + '|' + shortTitle(t.title); (dl[k] = dl[k] || []).push(hireOf(t.key)); } });
+  Object.entries(dl).forEach(([k, hs]) => { const [d, title] = k.split('|'); at(d).items.push(['law', '기한', `${esc(title)} · ${hs.length}명`, names(hs.map(h => h.name))]); });
+  S.surveys.filter(s => s.active).forEach(s => {
+    const hs = act.filter(h => h.status !== '입사 취소' && at(D.add(h.start, s.day)));
+    const by = {}; hs.forEach(h => (by[D.add(h.start, s.day)] = by[D.add(h.start, s.day)] || []).push(h));
+    Object.entries(by).forEach(([d, l]) => at(d).items.push(['survey', '설문', `${esc(s.name)} 발송 · ${l.length}명`, names(l.map(h => h.name))]));
+  });
+  days.forEach(x => { if (x.join) x.items.unshift(['join', '입사', `${x.join.length}명 입사`, names(x.join.map(h => h.name + ' (' + orgName(h.org) + ')'))]); });
+  const rel = i => i === 0 ? '오늘' : i === 1 ? '내일' : i === 2 ? '모레' : i + '일 후';
+  const all = days.map((x, i) => [x, i]).filter(([x]) => x.items.length), list = all.slice(0, 6);
+  return `<aside class="panel up-panel" aria-label="앞으로 2주 일정">
+    <div class="panel-head"><h2>앞으로 2주</h2><span class="hint">입사 · 법정 기한 · 설문 발송일</span></div>
+    ${list.length ? `<ol class="up">${list.map(([x, i]) => `<li><div class="up-day"><b>${D.md(x.d)} (${D.dow(x.d)})</b><span>${rel(i)}</span></div>
+      <ul>${x.items.map(([k, tag, text, who]) => `<li><span class="up-tag up-${k}">${tag}</span><div><span>${text}</span><span class="up-who">${esc(who)}</span></div></li>`).join('')}</ul></li>`).join('')}</ol>${all.length > list.length ? `<p class="up-more">이후 ${all.length - list.length}일 더 있음 · <a href="#prep">입사 준비 현황판</a></p>` : ''}`
+    : '<p class="empty">앞으로 2주 동안 정해진 일정이 없습니다.</p>'}
+  </aside>`;
 }
 
 function contactGroup(g, st, bare) {

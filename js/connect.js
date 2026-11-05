@@ -201,41 +201,37 @@ function apiBox(src) {
 /* ───────── 연결 설정 화면 ───────── */
 function viewConnect() {
   const ok = v => v ? '<span class="sg sg-ok">연결됨</span>' : '<span class="sg sg-off">연결 안 됨</span>';
+  // 한 줄에 하나씩: 왼쪽은 무엇·왜·만드는 법, 오른쪽은 넣을 칸 (높이를 맞출 필요가 없는 배치)
+  const row = (title, status, hint, howto, fields) => `<section class="panel conn-row">
+      <div class="conn-info"><div class="conn-title"><h2>${title}</h2>${status}</div><p class="hint">${hint}</p>${howto}</div>
+      <div class="conn-fields">${fields}</div></section>`;
   return `
   ${setupHead('connect')}
   <header class="page-head"><div><p class="sub">Gmail·Slack으로 바로 보내고, Google 시트·API에서 바로 가져오도록 연결합니다. 모두 무료로 쓸 수 있습니다.</p></div></header>
-  <form id="conn-form" class="conn-grid">
-    <section class="panel">
-      <div class="panel-head"><h2>Google</h2>${ok(CONN.google.clientId)}<span class="hint">Gmail로 보내기 · 공유하지 않은 시트 읽기</span></div>
-      <label class="fld"><span>OAuth Client ID</span><input name="g_client" value="${esc(CONN.google.clientId)}" placeholder="1234-abcd.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label>
-      <div class="row-act"><button type="button" class="btn" data-act="g-test">Google 로그인 시험</button></div>
-      <details class="howto"><summary>Client ID 만드는 법</summary><ol>
+  <form id="conn-form" class="conn-list">
+    ${row('Google', ok(CONN.google.clientId), 'Gmail로 보내기 · 공유하지 않은 시트 읽기',
+      `<details class="howto"><summary>Client ID 만드는 법</summary><ol>
         <li>Google Cloud 콘솔에서 프로젝트를 만들고 <b>Gmail API</b>와 <b>Google Sheets API</b>를 사용 설정합니다.</li>
         <li>OAuth 동의 화면을 "외부"로 만들고, 테스트 사용자에 본인 Gmail을 넣습니다.</li>
         <li>사용자 인증 정보 → OAuth 클라이언트 ID → 웹 애플리케이션을 고릅니다.</li>
-        <li>승인된 JavaScript 원본에 <code>${esc(location.origin)}</code>를 넣고, 만들어진 Client ID를 위에 붙여넣습니다.</li>
-      </ol><p class="hint">비밀 키(Client Secret)는 필요 없습니다. 메일은 로그인한 본인 계정에서 나갑니다.</p></details>
-    </section>
-    <section class="panel">
-      <div class="panel-head"><h2>Slack</h2>${ok(CONN.slack.it || CONN.slack.ga)}<span class="hint">IT·총무 채널에 요청 올리기</span></div>
-      <label class="fld"><span>IT 요청 채널 웹훅</span><input name="s_it" value="${esc(CONN.slack.it || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label>
-      <label class="fld"><span>총무 요청 채널 웹훅</span><input name="s_ga" value="${esc(CONN.slack.ga || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label>
-      <div class="row-act"><button type="button" class="btn" data-act="s-test">시험 메시지 보내기</button></div>
-      <details class="howto"><summary>웹훅 만드는 법</summary><ol>
+        <li>승인된 JavaScript 원본에 <code>${esc(location.origin)}</code>를 넣고, 만들어진 Client ID를 붙여넣습니다.</li>
+      </ol><p class="hint">비밀 키(Client Secret)는 필요 없습니다. 메일은 로그인한 본인 계정에서 나갑니다.</p></details>`,
+      `<label class="fld"><span>OAuth Client ID</span><input name="g_client" value="${esc(CONN.google.clientId)}" placeholder="1234-abcd.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label>
+      <div class="row-act"><button type="button" class="btn" data-act="g-test">Google 로그인 시험</button></div>`)}
+    ${row('Slack', ok(CONN.slack.it || CONN.slack.ga), 'IT·총무 채널에 요청 올리기',
+      `<details class="howto"><summary>웹훅 만드는 법</summary><ol>
         <li>api.slack.com/apps에서 앱을 만들고 <b>Incoming Webhooks</b>를 켭니다.</li>
         <li>"Add New Webhook to Workspace"로 채널을 고르면 주소가 나옵니다.</li>
-        <li>채널마다 하나씩 만들어 위에 붙여넣습니다.</li>
-      </ol><p class="hint">웹훅 주소를 아는 사람은 누구나 그 채널에 글을 올릴 수 있습니다. 공용 PC에서는 넣지 마세요.</p></details>
-    </section>
-    <section class="panel">
-      <div class="panel-head"><h2>메일로 받을 담당자</h2><span class="hint">Slack 대신 메일로 요청할 때</span></div>
-      <label class="fld"><span>IT 담당 메일</span><input name="m_it" type="email" value="${esc(CONN.mail.it || '')}" placeholder="it-help@회사.com"></label>
-      <label class="fld"><span>총무 담당 메일</span><input name="m_ga" type="email" value="${esc(CONN.mail.ga || '')}" placeholder="ga@회사.com"></label>
-    </section>
-    <section class="panel">
-      <div class="panel-head"><h2>데이터 연결</h2><span class="hint">데이터 가져오기에서 연결합니다</span></div>
-      <ul class="plain">${Object.keys(SOURCES).map(k => { const c = CONN.sources[k]; return `<li><a href="#import/${k}">${SOURCES[k].name}</a><span>${c ? (c.kind === 'api' ? 'API' : 'Google 시트') + (c.at ? ' · ' + D.md(c.at) + ' 가져옴' : '') : '<span class="muted">파일로 올림</span>'}</span></li>`; }).join('')}</ul>
-    </section>
+        <li>채널마다 하나씩 만들어 붙여넣습니다.</li>
+      </ol><p class="hint">웹훅 주소를 아는 사람은 누구나 그 채널에 글을 올릴 수 있습니다. 공용 PC에서는 넣지 마세요.</p></details>`,
+      `<div class="fld-2"><label class="fld"><span>IT 요청 채널 웹훅</span><input name="s_it" value="${esc(CONN.slack.it || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label>
+      <label class="fld"><span>총무 요청 채널 웹훅</span><input name="s_ga" value="${esc(CONN.slack.ga || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label></div>
+      <div class="row-act"><button type="button" class="btn" data-act="s-test">시험 메시지 보내기</button></div>`)}
+    ${row('메일로 받을 담당자', '', 'Slack 대신 메일로 IT·총무에 요청할 때 받는 주소', '',
+      `<div class="fld-2"><label class="fld"><span>IT 담당 메일</span><input name="m_it" type="email" value="${esc(CONN.mail.it || '')}" placeholder="it-help@회사.com"></label>
+      <label class="fld"><span>총무 담당 메일</span><input name="m_ga" type="email" value="${esc(CONN.mail.ga || '')}" placeholder="ga@회사.com"></label></div>`)}
+    ${row('데이터 연결', '', '각 데이터를 어떻게 받아오는지 보여 줍니다. 연결은 데이터 가져오기 탭에서 합니다.', '',
+      `<ul class="plain">${Object.keys(SOURCES).map(k => { const c = CONN.sources[k]; return `<li><a href="#import/${k}">${SOURCES[k].name}</a><span>${c ? (c.kind === 'api' ? 'API' : 'Google 시트') + (c.at ? ' · ' + D.md(c.at) + ' 가져옴' : '') : '<span class="muted">파일로 올림</span>'}</span></li>`; }).join('')}</ul>`)}
     <div class="conn-save"><button class="btn primary" data-act="conn-save">저장</button><span class="hint">연결 정보는 이 브라우저에만 저장되고 어떤 서버로도 보내지 않습니다.</span></div>
   </form>`;
 }
