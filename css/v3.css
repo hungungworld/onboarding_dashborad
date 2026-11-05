@@ -390,3 +390,10 @@ a.btn { text-decoration: none; }
 html { word-break: keep-all; overflow-wrap: break-word; }
 input, textarea, select, button { word-break: keep-all; overflow-wrap: break-word; }
 ::placeholder { word-break: keep-all; overflow-wrap: break-word; }
+
+/* 담당 머리글: 1줄 = ▶ 이름 담당, 2줄 = 남은 사람 수 (이름 글자 아래에 왼쪽 정렬). 폭이 달라도 모양이 같게 */
+.gh-btn { display: grid; grid-template-columns: 12px auto 1fr; column-gap: 6px; row-gap: 2px; align-items: baseline; }
+.gh-btn .chev { grid-column: 1; grid-row: 1; }
+.gh-btn .gh-name { grid-column: 2; grid-row: 1; }
+.gh-btn .gh-who { grid-column: 3; grid-row: 1; white-space: nowrap; }
+.gh-btn .gh-cnt { grid-column: 2 / -1; grid-row: 2; margin: 0; padding: 0; font-size: 12.5px; }
