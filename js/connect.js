@@ -6,6 +6,9 @@ const CONN = (() => { try { return JSON.parse(localStorage.getItem(CONN_KEY)) ||
 CONN.google = CONN.google || { clientId: '' };
 CONN.slack = CONN.slack || {};       // { it, ga } : Incoming Webhook 주소
 CONN.mail = CONN.mail || {};         // { it, ga } : 담당 부서 메일 주소
+// 담당 부서 메일이 비어 있으면 예시 주소를 넣어 둔다 (설정 → 연결에서 실제 주소로 바꾸면 된다)
+const DEMO_MAIL = { it: 'it-help@demo-corp.kr', ga: 'ga-team@demo-corp.kr' };
+Object.keys(DEMO_MAIL).forEach(k => { if (!CONN.mail[k]) CONN.mail[k] = DEMO_MAIL[k]; });
 CONN.sources = CONN.sources || {};   // { ats: { kind: 'sheet'|'api', url, header, path, at } }
 function saveConn() { try { localStorage.setItem(CONN_KEY, JSON.stringify(CONN)); } catch (e) { /* 저장 불가 */ } }
 
@@ -69,17 +72,17 @@ function openCompose(opt) {
   if (opt.slack && CONN.slack[opt.slack]) ch.push(['slack', 'Slack 채널에 올리기']);
   ch.push(['mailto', '메일 앱에서 열기'], ['copy', '복사만 하기']);
   const def = ch[0][0];
-  const demo = /@mail-demo\.kr/.test((opt.to || '') + (opt.bcc || ''));
+  const demo = /@(mail-)?demo(-corp)?\.kr/.test((opt.to || '') + (opt.bcc || ''));
   modal(esc(opt.title), `
     <div class="ch-pick" role="radiogroup" aria-label="보내는 방법">${ch.map(([k, l]) => `<label class="ch ${k === def ? 'on' : ''}"><input type="radio" name="ch" value="${k}" ${k === def ? 'checked' : ''}>${l}</label>`).join('')}</div>
     ${CONN.google.clientId ? '' : `<p class="m-note">Gmail이나 Slack으로 바로 보내려면 <a href="#connect">연결 설정</a>에서 연결하세요. 지금은 메일 앱에서 열거나 복사할 수 있습니다.</p>`}
     <div class="ch-mail">
-      <label class="fld"><span>받는 사람</span><input name="to" value="${esc(opt.to || '')}" placeholder="이름@회사.com, 여러 명은 쉼표로"></label>
+      <label class="fld"><span>받는 사람</span><input name="to" value="${esc(opt.to || '')}" placeholder="${opt.bcc ? '비워 두면 숨은 참조로만 보냅니다 (받는 사람끼리 주소가 안 보임)' : '이름@회사.com, 여러 명은 쉼표로'}"></label>
       ${opt.bcc !== undefined ? `<label class="fld"><span>숨은 참조</span><input name="bcc" value="${esc(opt.bcc || '')}"></label>` : ''}
       <label class="fld"><span>제목</span><input name="subject" value="${esc(opt.subject)}"></label>
     </div>
     <label class="fld"><span>내용</span><textarea name="body" rows="10">${esc(opt.body)}</textarea></label>
-    ${demo ? '<p class="m-note">예시 데이터의 주소(@mail-demo.kr)는 가짜라 실제로 보내면 반송됩니다. 시험할 때는 받는 사람을 본인 주소로 바꾸세요.</p>' : ''}`,
+    ${demo ? '<p class="m-note">예시 데이터의 주소(@mail-demo.kr, @demo-corp.kr)는 가짜라 실제로 보내면 반송됩니다. 시험할 때는 받는 사람을 본인 주소로 바꾸세요.</p>' : ''}`,
   (fd, f) => {
     const via = fd.get('ch'), m = { to: String(fd.get('to') || '').trim(), bcc: String(fd.get('bcc') || '').trim(), subject: String(fd.get('subject') || ''), body: String(fd.get('body') || '') };
     if (via === 'copy') { copy(m.subject + '\n\n' + m.body); return; }
@@ -110,7 +113,7 @@ function askCompose(rid) {
     bcc = [...new Set(items.map(t => hireOf(t.key).email))].join(', ');
   } else if (rid.startsWith('n:')) { subject = `[입사 준비] ${h0.name} 님, 확인 부탁드립니다`; to = h0.email; }
   else if (rid.startsWith('m:')) { subject = `[온보딩] 새 팀원 준비 확인 부탁드립니다`; to = h0.mgr; }
-  else { slack = r.id === 'IT' ? 'it' : 'ga'; to = CONN.mail[slack] || ''; subject = `[입사 준비] 신규 입사자 ${items.length}건 확인 부탁드립니다`; }
+  else { slack = r.id === 'IT' ? 'it' : 'ga'; to = CONN.mail[slack] || DEMO_MAIL[slack]; subject = `[입사 준비] 신규 입사자 ${items.length}건 확인 부탁드립니다`; }
   openCompose({ title: r.label + '에게 요청', to, bcc, subject, body, slack, onSent: via => { (S.asks = S.asks || []).push({ rid, at: TODAY, via }); save(); } });
 }
 const lastAsk = rid => (S.asks || []).filter(a => a.rid === rid).slice(-1)[0];
@@ -232,7 +235,7 @@ function viewConnect() {
       `<div class="fld-2"><label class="fld"><span>IT 요청 채널 웹훅</span><input name="s_it" value="${esc(CONN.slack.it || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label>
       <label class="fld"><span>총무 요청 채널 웹훅</span><input name="s_ga" value="${esc(CONN.slack.ga || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label></div>
       <div class="row-act"><button type="button" class="btn" data-act="s-test">시험 메시지 보내기</button></div>`)}
-    ${row('메일로 받을 담당자', '', 'Slack 대신 메일로 IT·총무에 요청할 때 받는 주소', '',
+    ${row('메일로 받을 담당자', '', 'Slack 대신 메일로 IT·총무에 요청할 때 받는 주소. 지금은 예시 주소가 들어 있으니 실제 주소로 바꾸세요.', '',
       `<div class="fld-2"><label class="fld"><span>IT 담당 메일</span><input name="m_it" type="email" value="${esc(CONN.mail.it || '')}" placeholder="it-help@회사.com"></label>
       <label class="fld"><span>총무 담당 메일</span><input name="m_ga" type="email" value="${esc(CONN.mail.ga || '')}" placeholder="ga@회사.com"></label></div>`)}
     ${row('데이터 연결', '', '각 데이터를 어떻게 받아오는지 보여 줍니다. 연결은 데이터 가져오기 탭에서 합니다.', '',
