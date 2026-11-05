@@ -244,7 +244,7 @@ function buildDemo(today) {
     { at: lastImport.hris, source: 'hris', file: '인사기본정보.xlsx', summary: '사번 연결 3명' },
     { at: lastImport.ats, source: 'ats', file: '합격자명단.xlsx', summary: '새 입사자 2명, 입사일 변경 1명' },
   ];
-  return { v: 3, hires, tasks, template, surveys, sends, resp, settings, lastImport, imports };
+  return { v: 3, workdays: 1, hires, tasks, template, surveys, sends, resp, settings, lastImport, imports };
 }
 
 /* ───────── 샘플 파일 (화면 속 데이터와 맞물리게 그때그때 만든다) ───────── */

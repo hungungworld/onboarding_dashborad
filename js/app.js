@@ -4,8 +4,17 @@ const TODAY = D.today();
 let S = load();
 
 function load() {
-  try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if (s && s.v === 3) return s; } catch (e) { /* 저장소 없음 */ }
+  try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if (s && s.v === 3) return toWorkdays(s); } catch (e) { /* 저장소 없음 */ }
   const s = buildDemo(TODAY); persist(s); return s;
+}
+/* 공휴일 달력이 생기기 전에 저장된 데이터: 주말·공휴일 입사일을 다음 근무일로 옮기고 기한을 다시 계산한다 (한 번만) */
+function toWorkdays(s) {
+  if (s.workdays) return s;
+  s.hires.forEach(h => { if (h.start && !D.isWorkday(h.start)) h.start = D.nextWork(h.start); });
+  s.tasks.forEach(t => { const h = s.hires.find(x => x.key === t.key); if (h && t.offset !== undefined) t.due = dueOf(t, h, s.settings || { probationMonths: 3 }); });
+  s.workdays = 1;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch (e) { /* 저장 불가 */ }
+  return s;
 }
 function persist(s) { try { localStorage.setItem(STORE_KEY, JSON.stringify(s || S)); } catch (e) { /* 저장할 수 없는 환경 */ } }
 function save() { persist(); render(); }
