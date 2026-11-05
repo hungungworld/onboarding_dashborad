@@ -389,7 +389,7 @@ function viewPrep(dv) {
   const leftPeople = g => hs.filter(h => g.all.some(c => { const t = taskOf(h, c); return t && !t.done && !t.closed; })).length;
   const head = g => { const n = leftPeople(g);
     return `<button type="button" class="gh-btn" data-act="prep-group" data-o="${g.o}" aria-expanded="${g.open}" title="누르면 ${g.open ? '접힙니다' : '항목별로 펼쳐집니다'}">
-      <span class="chev" aria-hidden="true">▶</span><span class="gh-name">${g.name}</span><span class="gh-who">${g.who}</span>${g.open ? '' : `<span class="gh-cnt ${n ? '' : 'ok'}">${n ? n + '명 남음' : '완료'}</span>`}</button>`; };
+      <span class="chev" aria-hidden="true">▶</span><span class="gh-name">${g.name}</span>${g.open ? '' : `<span class="gh-pill ${n ? '' : 'ok'}" title="${n ? '아직 다 끝나지 않은 사람 ' + n + '명' : '모두 완료'}">${n ? n + '명' : '완료'}</span>`}<span class="gh-who">${g.who}</span></button>`; };
   const cellOf = (h, c) => {
     const t = taskOf(h, c);
     if (!t || t.closed) return '<td class="c c-na" title="해당 없음">–</td>';
