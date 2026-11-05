@@ -326,3 +326,7 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; m
 .set-head { margin-bottom: 8px; }
 .set-head + .day-tabs + .page-head { margin-bottom: 16px; }
 .set-head + .day-tabs + .page-head .sub { margin: 0; }
+
+/* 현황판 항목 머리글: 이름은 위, 'N명'은 아래에 줄 맞춤 */
+.matrix .m-col { vertical-align: top; position: relative; padding-bottom: 32px; }
+.matrix .m-col .m-copy, .matrix .m-col .m-alldone { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); margin: 0; white-space: nowrap; }
