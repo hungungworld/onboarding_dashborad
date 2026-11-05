@@ -10,7 +10,7 @@ CONN.sources = CONN.sources || {};   // { ats: { kind: 'sheet'|'api', url, heade
 function saveConn() { try { localStorage.setItem(CONN_KEY, JSON.stringify(CONN)); } catch (e) { /* 저장 불가 */ } }
 
 /* ───────── Google 로그인 (Google Identity Services, 무료) ───────── */
-const G_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/spreadsheets.readonly';
+const G_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/forms.body https://www.googleapis.com/auth/forms.responses.readonly';
 let G_TOKEN = null;
 function loadGis() {
   if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
@@ -214,9 +214,9 @@ function viewConnect() {
   ${setupHead('connect')}
   <header class="page-head"><div><p class="sub">Gmail·Slack으로 바로 보내고, Google 시트·API에서 바로 가져오도록 연결합니다. 모두 무료로 쓸 수 있습니다.</p></div></header>
   <form id="conn-form" class="conn-list">
-    ${row('Google', ok(CONN.google.clientId), 'Gmail로 보내기 · 공유하지 않은 시트 읽기',
+    ${row('Google', ok(CONN.google.clientId), 'Gmail로 보내기 · 설문 Google 폼 만들기 · 시트 읽기',
       `<details class="howto"><summary>Client ID 만드는 법</summary><ol>
-        <li>Google Cloud 콘솔에서 프로젝트를 만들고 <b>Gmail API</b>와 <b>Google Sheets API</b>를 사용 설정합니다.</li>
+        <li>Google Cloud 콘솔에서 프로젝트를 만들고 <b>Gmail API</b>, <b>Google Sheets API</b>, <b>Google Forms API</b>를 사용 설정합니다.</li>
         <li>OAuth 동의 화면을 "외부"로 만들고, 테스트 사용자에 본인 Gmail을 넣습니다.</li>
         <li>사용자 인증 정보 → OAuth 클라이언트 ID → 웹 애플리케이션을 고릅니다.</li>
         <li>승인된 JavaScript 원본에 <code>${esc(location.origin)}</code>를 넣고, 만들어진 Client ID를 붙여넣습니다.</li>
@@ -284,12 +284,14 @@ function formLink(s, h, to) {
 }
 function formPanel(s) {
   const f = s.form || {}, mgr = s.audience === '매니저';
+  if (f.api) return `<section class="panel form-bar"><div><b>응답 받는 곳: Google 폼 (문항 만들기에서 만든 폼)</b><span class="w-meta">메일 속 링크는 이메일${mgr ? '·입사자 이름' : ''}이 미리 채워진 이 폼으로 갑니다. 응답은 결과 탭에서 바로 가져옵니다.</span></div>
+    <div class="row-act"><a class="btn ghost" href="${esc(f.responder)}" target="_blank" rel="noopener">폼 열기</a><a class="btn ghost" href="#survey/${s.id}/edit">문항 만들기에서 관리</a></div></section>`;
   if (f.url && !UI.formEdit) return `<section class="panel form-bar">
     <div><b>응답 받는 곳: Google 폼</b><span class="w-meta">메일 속 링크는 이메일${mgr ? '·입사자 이름' : ''}이 미리 채워진 Google 폼으로 갑니다. ${f.sheet ? '응답 시트 연결됨 · 결과 탭에서 가져옵니다.' : '<b class="warn-t">응답 시트가 아직 없습니다.</b>'}</span></div>
     <div class="row-act"><a class="btn ghost" href="${esc(f.url)}" target="_blank" rel="noopener">폼 열기</a><button class="btn ghost" data-act="form-edit">바꾸기</button></div></section>`;
   return `<section class="panel form-setup">
     <div class="panel-head"><h2>응답 받는 곳</h2>${f.url ? '' : '<span class="sg sg-warn">아직 Google 폼 없음</span>'}</div>
-    <p class="hint">${f.url ? '' : '지금은 데모용 응답 페이지로 보냅니다. 이 페이지는 응답이 <b>입사자 브라우저에만</b> 저장되어 HR 화면으로 돌아오지 않습니다. '}Google 폼을 연결하면 응답이 Google 시트에 모이고, 결과 탭에서 한 번에 가져올 수 있습니다.</p>
+    <p class="hint">${f.url ? '' : '지금은 데모용 응답 페이지로 보냅니다. 이 페이지는 응답이 <b>입사자 브라우저에만</b> 저장되어 HR 화면으로 돌아오지 않습니다. '}Google 폼을 연결하면 응답이 HR에게 모입니다. <b>가장 쉬운 방법은 <a href="#survey/${s.id}/edit">문항 만들기</a> 탭에서 "이 문항으로 Google 폼 만들기"를 누르는 것</b>입니다(Google 연결 필요). 이미 만든 폼이 있으면 아래에 직접 연결해도 됩니다.</p>
     <div class="fld-2">
       <label class="fld"><span>Google 폼 사전 입력 링크</span><input id="form-url" value="${esc(f.url || '')}" placeholder="https://docs.google.com/forms/d/e/…/viewform?usp=pp_url&amp;entry.…=test@test.com"></label>
       <label class="fld"><span>응답 시트 주소</span><input id="form-sheet" value="${esc(f.sheet || '')}" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
@@ -325,3 +327,105 @@ Object.assign(CONNECT_ACTS, {
   },
   'form-pull': b => { const s = S.surveys.find(x => x.id === b.dataset.s); if (!s.form || !s.form.sheet) { toast('응답 시트 주소를 먼저 넣어 주세요.'); return; } pullSurveySheet(s); },
 });
+
+/* ───────── Google Forms API: 문항 만들기 ↔ Google 폼 ─────────
+   문항 만들기가 기준이고, Google 폼은 그대로 따라간다.
+   s.form = { api: true, id, url(사전 입력 링크), responder, emailQ, hireQ, qmap: { 문항키: questionId }, syncedAt, dirty } */
+const FORMS_API = 'https://forms.googleapis.com/v1/forms';
+function gapi(url, opt) {
+  return googleToken().then(tk => fetch(url, Object.assign({}, opt, { headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' } })))
+    .then(r => r.json().catch(() => ({})).then(j => { if (!r.ok || j.error) throw new Error('Google 폼이 처리하지 못했습니다: ' + ((j.error && j.error.message) || r.status)); return j; }));
+}
+const FORM_SCALE = { 점수5: { low: 1, high: 5, lowLabel: '전혀 아니다', highLabel: '매우 그렇다' }, 추천10: { low: 0, high: 10, lowLabel: '전혀 추천하지 않음', highLabel: '꼭 추천함' } };
+function formQuestion(q) {
+  const question = FORM_SCALE[q.type] ? { scaleQuestion: FORM_SCALE[q.type] }
+    : q.type === '예아니오' ? { choiceQuestion: { type: 'RADIO', options: [{ value: '예' }, { value: '아니오' }] } }
+    : { textQuestion: { paragraph: true } };
+  question.required = q.type !== '텍스트';
+  return { title: q.text, questionItem: { question } };
+}
+function fixedItems(s) {
+  const it = [{ title: '이메일', description: '자동으로 채워져 있습니다. 바꾸지 말아 주세요.', questionItem: { question: { required: true, textQuestion: {} } } }];
+  if (s.audience === '매니저') it.push({ title: '입사자 이름', description: '어느 팀원에 대한 체크인인지 자동으로 채워져 있습니다.', questionItem: { question: { required: true, textQuestion: {} } } });
+  return it;
+}
+async function syncForm(s) {
+  const mgr = s.audience === '매니저', keep = mgr ? 2 : 1;
+  const fresh = !(s.form && s.form.api && s.form.id);
+  let id = fresh ? null : s.form.id;
+  if (fresh) {
+    id = (await gapi(FORMS_API, { method: 'POST', body: JSON.stringify({ info: { title: s.name, documentTitle: '온보딩 · ' + s.name } }) })).formId;
+    // API로 만든 폼은 '게시 안 됨'으로 시작할 수 있어서 응답 받기를 켠다 (지원하지 않는 계정이면 건너뜀)
+    await gapi(`${FORMS_API}/${id}:setPublishSettings`, { method: 'POST', body: JSON.stringify({ publishSettings: { publishState: { isPublished: true, isAcceptingResponses: true } }, updateMask: 'publishState' }) }).catch(() => {});
+  }
+  const cur = await gapi(`${FORMS_API}/${id}`);
+  const items = cur.items || [];
+  // 이메일·입사자 이름 문항은 남겨 둔다 (이미 보낸 링크의 미리 채움이 계속 맞도록). 나머지 문항만 새로 만든다.
+  const keepOld = !fresh && items.length >= keep && items[0].title === '이메일';
+  const req = [{ updateFormInfo: { info: { title: s.name, description: `입사 ${s.day}일 차 설문입니다. 응답은 HR만 봅니다.` }, updateMask: 'title,description' } }];
+  for (let i = items.length - 1; i >= (keepOld ? keep : 0); i--) req.push({ deleteItem: { location: { index: i } } });
+  const add = (keepOld ? [] : fixedItems(s)).concat(s.qs.map(formQuestion));
+  add.forEach((item, i) => req.push({ createItem: { item, location: { index: (keepOld ? keep : 0) + i } } }));
+  const res = await gapi(`${FORMS_API}/${id}:batchUpdate`, { method: 'POST', body: JSON.stringify({ includeFormInResponse: true, requests: req }) });
+  const form = res.form || await gapi(`${FORMS_API}/${id}`);
+  const qs = (form.items || []).filter(it => it.questionItem).map(it => it.questionItem.question.questionId);
+  const emailQ = qs[0], hireQ = mgr ? qs[1] : '';
+  const qmap = {}; s.qs.forEach((q, i) => { qmap[q.q] = qs[keep + i]; });
+  // 사전 입력 링크의 entry 번호는 questionId(16진수)를 10진수로 바꾼 값이다
+  const entry = x => parseInt(x, 16);
+  const responder = form.responderUri;
+  const url = responder + (responder.includes('?') ? '&' : '?') + 'usp=pp_url&entry.' + entry(emailQ) + '=test@test.com' + (mgr ? '&entry.' + entry(hireQ) + '=' + encodeURIComponent('홍길동') : '');
+  s.form = { api: true, id, url, responder, emailQ, hireQ, qmap, syncedAt: TODAY, dirty: false };
+  save();
+  return s.form;
+}
+async function pullFormResponses(s) {
+  const mgr = s.audience === '매니저';
+  let list = [], token = '';
+  do {
+    const j = await gapi(`${FORMS_API}/${s.form.id}/responses` + (token ? '?pageToken=' + encodeURIComponent(token) : ''));
+    list = list.concat(j.responses || []); token = j.nextPageToken || '';
+  } while (token);
+  if (!list.length) { toast('아직 Google 폼에 들어온 응답이 없습니다.'); return; }
+  const val = (r, id) => { const a = r.answers && r.answers[id]; return a && a.textAnswers ? a.textAnswers.answers.map(x => x.value).join(', ') : ''; };
+  const head = ['이메일', ...(mgr ? ['입사자 이름'] : []), ...s.qs.map(q => q.text), '제출 시각'];
+  const rows = list.map(r => [val(r, s.form.emailQ), ...(mgr ? [val(r, s.form.hireQ)] : []), ...s.qs.map(q => val(r, s.form.qmap[q.q])), (r.lastSubmittedTime || r.createTime || '').slice(0, 10)]);
+  IMP = { src: 'survey', surveyId: s.id };
+  location.hash = '#import/survey';
+  loadGrid([head, ...rows], 'Google 폼 응답');
+}
+function busy(b, label, job) {
+  const old = b.textContent; b.disabled = true; b.textContent = label;
+  return job.then(() => { b.disabled = false; b.textContent = old; }, e => { b.disabled = false; b.textContent = old; modal('Google 폼 작업을 하지 못했습니다', `<p>${esc(e.message)}</p><p class="m-note">설정 → 연결의 "Client ID 만드는 법"에서 Google Forms API를 사용 설정했는지 확인하세요.</p>`, null, null); });
+}
+
+/* 문항 만들기 탭 맨 위: Google 폼 상태 */
+function gformBox(s) {
+  const f = s.form || {};
+  const edit = f.id ? `https://docs.google.com/forms/d/${f.id}/edit` : '';
+  if (!CONN.google.clientId) return `<section class="panel form-bar"><div><b>Google 폼과 연결</b><span class="w-meta">Google을 연결하면 이 문항 그대로 Google 폼을 만들고, 문항을 고칠 때마다 폼에도 반영합니다.</span></div><div class="row-act"><a class="btn" href="#connect">설정 → 연결에서 Google 연결</a></div></section>`;
+  if (f.api) return `<section class="panel form-bar ${f.dirty ? 'is-dirty' : ''}"><div><b>Google 폼과 연결됨</b><span class="w-meta">${f.dirty ? '<b class="warn-t">고친 문항이 아직 Google 폼에 반영되지 않았습니다.</b>' : `문항을 저장하면 Google 폼에도 자동으로 반영됩니다. 마지막 반영 ${D.md(f.syncedAt)}.`}</span></div>
+    <div class="row-act">${f.dirty ? `<button class="btn primary" data-act="gform-sync" data-s="${s.id}">지금 반영</button>` : ''}<a class="btn ghost" href="${esc(f.responder)}" target="_blank" rel="noopener">응답 화면 보기</a><a class="btn ghost" href="${edit}" target="_blank" rel="noopener">Google 폼에서 열기</a></div></section>`;
+  return `<section class="panel form-bar"><div><b>Google 폼 만들기</b><span class="w-meta">${f.url ? '지금은 직접 연결한 폼을 씁니다. 이 경우 문항을 고쳐도 폼에 반영되지 않습니다. 여기서 새로 만들면 문항이 자동으로 맞춰집니다.' : '아래 문항 그대로 Google 폼을 만듭니다. 이메일' + (s.audience === '매니저' ? '·입사자 이름' : '') + ' 칸은 자동으로 들어가고, 보낼 때 사람마다 미리 채워집니다.'}</span></div>
+    <div class="row-act"><button class="btn primary" data-act="gform-create" data-s="${s.id}">이 문항으로 Google 폼 만들기</button></div></section>`;
+}
+Object.assign(CONNECT_ACTS, {
+  'gform-create': b => { const s = S.surveys.find(x => x.id === b.dataset.s); if ($('#survey-edit')) readSurveyForm(s);
+    busy(b, '만드는 중…', syncForm(s).then(() => { render(); toast('Google 폼을 만들었습니다. 이제 이 설문은 이 폼으로 보내고 받습니다.'); })); },
+  'gform-sync': b => { const s = S.surveys.find(x => x.id === b.dataset.s);
+    busy(b, '반영하는 중…', syncForm(s).then(() => { render(); toast('Google 폼에 반영했습니다.'); })); },
+});
+// 기존 '응답 시트에서 가져오기' 버튼: API로 만든 폼이면 Forms API로 바로 읽는다
+CONNECT_ACTS['form-pull'] = b => {
+  const s = S.surveys.find(x => x.id === b.dataset.s);
+  if (s.form && s.form.api) return busy(b, '가져오는 중…', pullFormResponses(s));
+  if (!s.form || !s.form.sheet) { toast('응답 시트 주소를 먼저 넣어 주세요.'); return; }
+  pullSurveySheet(s);
+};
+// 문항을 저장하면 연결된 Google 폼에도 반영
+function afterSurveySave(s) {
+  if (!(s.form && s.form.api)) return;
+  s.form.dirty = true; persist();
+  if (!CONN.google.clientId) return;
+  syncForm(s).then(() => { render(); toast('저장하고 Google 폼에도 반영했습니다.'); }, e => { render(); toast('저장했지만 Google 폼에는 반영하지 못했습니다. ' + e.message); });
+}

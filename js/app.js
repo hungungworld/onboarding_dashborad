@@ -553,7 +553,7 @@ function surveyResult(s) {
   const missed = x.sends.filter(y => sendState(y) === '미응답').length;
   const low = [...new Set(rs.filter(r => { const q = s.qs.find(qq => qq.q === r.q); return q && ((q.type === '점수5' && r.score <= 2) || (q.type === '예아니오' && r.answer === '예')); }).map(r => r.key))];
   return `
-  ${s.form && s.form.sheet ? `<section class="panel form-bar"><div><b>응답 시트에서 가져오기</b><span class="w-meta">Google 폼 응답이 쌓인 시트를 읽어 결과에 반영합니다. 이미 가져온 응답은 건너뜁니다.</span></div><div class="row-act"><button class="btn primary" data-act="form-pull" data-s="${s.id}">지금 가져오기</button></div></section>` : s.form && s.form.url ? '' : `<p class="hint form-hint">Google 폼을 연결하면 여기서 응답 시트를 바로 가져올 수 있습니다. <a href="#survey/${s.id}/send">보내기 탭에서 연결</a></p>`}
+  ${s.form && (s.form.api || s.form.sheet) ? `<section class="panel form-bar"><div><b>${s.form.api ? 'Google 폼 응답 가져오기' : '응답 시트에서 가져오기'}</b><span class="w-meta">${s.form.api ? 'Google 폼에 들어온 응답을 바로 읽어' : 'Google 폼 응답이 쌓인 시트를 읽어'} 결과에 반영합니다. 이미 가져온 응답은 건너뜁니다.</span></div><div class="row-act"><button class="btn primary" data-act="form-pull" data-s="${s.id}">지금 가져오기</button></div></section>` : s.form && s.form.url ? '' : `<p class="hint form-hint">Google 폼을 연결하면 여기서 응답 시트를 바로 가져올 수 있습니다. <a href="#survey/${s.id}/send">보내기 탭에서 연결</a></p>`}
   <div class="kpis kpis-4">
     <div class="kpi"><span class="k-label">보낸 수</span><span class="k-val">${x.sends.length}</span></div>
     <div class="kpi"><span class="k-label">응답</span><span class="k-val">${x.answered}</span><span class="k-note">미응답 ${missed} · 대기 ${x.waiting.length}</span></div>
@@ -583,7 +583,7 @@ function surveyEdit(s) {
   const T = ['점수5', '추천10', '예아니오', '텍스트'];
   const TL = { 점수5: '1~5점', 추천10: '0~10점 (추천 의향)', 예아니오: '예 / 아니오', 텍스트: '서술형' };
   const used = S.sends.some(x => x.survey === s.id);
-  return `<form id="survey-edit" class="panel">
+  return `${gformBox(s)}<form id="survey-edit" class="panel">
     <div class="fgrid three">
       <label class="fld"><span>설문 이름</span><input name="name" value="${esc(s.name)}" required></label>
       <label class="fld"><span>받는 사람</span><select name="audience">${['입사자', '매니저'].map(a => `<option ${a === s.audience ? 'selected' : ''}>${a}</option>`).join('')}</select></label>
@@ -643,7 +643,7 @@ const SOURCES = {
     fields: [['empNo', '사번', 1, ['사번', '사원번호']], ['course', '과정 코드', 1, ['과정코드', '과정 코드', 'course']], ['doneAt', '수료일', 0, ['수료일', '이수일', '완료일']], ['result', '수료 여부', 1, ['수료여부', '이수여부', '수료 여부', '결과']]] },
   survey: { name: '설문 응답 (구글 폼·MS Forms)', from: '구글 폼 → 응답 → 스프레드시트에서 보기 → 다운로드(.xlsx/.csv)', who: '본인', when: '구글 폼으로 설문을 돌렸을 때', match: '이메일 (매니저 설문은 이메일 + 입사자 이름)',
     does: '응답을 입사자에게 연결하고 결과에 반영',
-    fields: [['email', '이메일', 1, ['이메일 주소', '이메일', 'email']], ['at', '제출 시각', 0, ['타임스탬프', 'timestamp', '제출 시간', '완료 시간']], ['hire', '입사자 이름 (매니저 설문)', 0, ['입사자 이름', '입사자', '대상자']]] },
+    fields: [['email', '이메일', 1, ['이메일 주소', '이메일', 'email']], ['at', '제출 시각', 0, ['타임스탬프', 'timestamp', '제출 시각', '제출 시간', '완료 시간']], ['hire', '입사자 이름 (매니저 설문)', 0, ['입사자 이름', '입사자', '대상자']]] },
 };
 let IMP = null; // { src, file, head, rows, map, surveyId, plan }
 
@@ -1054,7 +1054,7 @@ document.addEventListener('click', e => {
     'q-add': () => { readSurveyForm(sv); sv.qs.push({ q: 'q' + Date.now().toString(36), text: '', type: '점수5' }); render(); },
     'q-del': () => { readSurveyForm(sv); sv.qs.splice(Number(b.dataset.i), 1); render(); },
     'q-up': () => { readSurveyForm(sv); const i = Number(b.dataset.i); [sv.qs[i - 1], sv.qs[i]] = [sv.qs[i], sv.qs[i - 1]]; render(); },
-    'survey-save': () => { readSurveyForm(sv); if (!sv.qs.length) { toast('문항을 하나 이상 넣어 주세요.'); return; } save(); toast('설문을 저장했습니다.'); },
+    'survey-save': () => { readSurveyForm(sv); if (!sv.qs.length) { toast('문항을 하나 이상 넣어 주세요.'); return; } save(); toast('설문을 저장했습니다.'); afterSurveySave(sv); },
     sample: () => downloadSample(b.dataset.src),
     'paste-toggle': () => { const box = $('#paste-box'), open = box.hidden; box.hidden = !open; b.setAttribute('aria-expanded', open); b.classList.toggle('on', open); if (open) $('#imp-paste').focus(); },
     'prep-group': () => togglePrepGroup(b.dataset.o),
