@@ -1078,9 +1078,19 @@ document.addEventListener('change', e => {
   if (t.dataset.f && t.tagName === 'SELECT') { UI[t.dataset.f] = t.value; render(); }
   if (t.dataset.f && t.type === 'checkbox') { UI[t.dataset.f] = t.checked; render(); }
 });
+/* 검색칸: 한글 입력 중(조합 중)에는 화면을 다시 그리지 않는다. 다시 그리면 입력칸이 바뀌어 'ㅇㅣㅈ' 처럼 글자가 깨진다. */
+function searchUpdate(t) {
+  UI[t.dataset.f] = t.value;
+  const pos = t.selectionStart; render();
+  const n = $('[data-f="' + t.dataset.f + '"]'); if (n) { n.focus(); n.setSelectionRange(pos, pos); }
+}
 document.addEventListener('input', e => {
   const t = e.target;
-  if (t.dataset.f && t.type === 'search') { UI[t.dataset.f] = t.value; const pos = t.selectionStart; render(); const n = $('[data-f="' + t.dataset.f + '"]'); n.focus(); n.setSelectionRange(pos, pos); }
+  if (t.dataset.f && t.type === 'search' && !e.isComposing) searchUpdate(t);
+});
+document.addEventListener('compositionend', e => {
+  const t = e.target;
+  if (t.dataset && t.dataset.f && t.type === 'search') searchUpdate(t);
 });
 document.addEventListener('submit', e => {
   if (e.target.id === 'respond-form') {
