@@ -48,7 +48,7 @@ function modal(title, body, onOk, okLabel, wide) {
   m.innerHTML = `<form method="dialog" class="m-box"><h2>${title}</h2><div class="m-body">${body}</div>
     <div class="m-act"><button type="button" class="btn ghost" data-close>닫기</button>${okLabel === null ? '' : `<button class="btn primary">${okLabel || '저장'}</button>`}</div></form>`;
   const f = m.querySelector('form');
-  f.addEventListener('submit', e => { e.preventDefault(); const err = onOk && onOk(new FormData(f), f); if (err) { let p = f.querySelector('.m-err'); if (!p) { p = document.createElement('p'); p.className = 'm-err'; f.querySelector('.m-act').before(p); } p.textContent = err; return; } m.close(); });
+  f.addEventListener('submit', e => { e.preventDefault(); const err = onOk && onOk(new FormData(f), f); if (err === false) return; /* 비동기 작업 중: 창을 열어 둔다 */ if (err) { let p = f.querySelector('.m-err'); if (!p) { p = document.createElement('p'); p.className = 'm-err'; f.querySelector('.m-act').before(p); } p.textContent = err; return; } m.close(); });
   f.querySelector('[data-close]').addEventListener('click', () => m.close());
   m.showModal();
 }
@@ -989,20 +989,32 @@ function actSend(sid) {
   const s = S.surveys.find(x => x.id === sid);
   const keys = [...document.querySelectorAll('#send-form [name=k]:checked')].map(x => x.value);
   if (!keys.length) { toast('보낼 사람을 고르세요.'); return; }
-  const made = keys.map(k => { const x = { id: 'SND-' + (S.sends.length + 1) + '-' + Date.now().toString(36), survey: sid, key: k, sentAt: TODAY, token: Math.random().toString(36).slice(2, 12), respondedAt: '', via: '' }; S.sends.push(x); return x; });
-  persist();
-  const rows = made.map(x => { const h = hireOf(x.key); const to = s.audience === '매니저' ? h.mgr : h.email; return { h, to, url: s.form && s.form.url ? formLink(s, h, to) : respondUrl(x.token) }; });
+  // 아직 기록하지 않는다: 실제로 보냈을 때(Gmail 성공 또는 '보냈다고 표시')에만 발송 기록에 넣는다
+  const drafts = keys.map((k, i) => ({ id: 'SND-' + (S.sends.length + 1 + i) + '-' + Date.now().toString(36), survey: sid, key: k, sentAt: TODAY, token: Math.random().toString(36).slice(2, 12), respondedAt: '', via: '' }));
+  const rows = drafts.map(x => { const h = hireOf(x.key); const to = s.audience === '매니저' ? h.mgr : h.email; return { h, to, url: s.form && s.form.url ? formLink(s, h, to) : respondUrl(x.token) }; });
   const mail = s.audience === '매니저'
-    ? `[온보딩] ${s.name} 부탁드립니다\n\n매니저님, 안녕하세요. 온보딩 담당 HR입니다.\n팀에 새로 오신 분이 입사 ${s.day}일을 맞았습니다. 1분이면 끝나는 체크인에 답해 주세요.\n응답은 HR만 보며, 필요한 경우 HR이 먼저 연락드립니다.\n\n{링크}`
+    ? `[온보딩] ${s.name} 부탁드립니다\n\n매니저님, 안녕하세요. 온보딩 담당 HR입니다.\n팀에 새로 오신 {이름} 님이 입사 ${s.day}일을 맞았습니다. 1분이면 끝나는 체크인에 답해 주세요.\n응답은 HR만 보며, 필요한 경우 HR이 먼저 연락드립니다.\n\n{링크}`
     : `[온보딩] 입사 ${s.day}일, 잘 지내고 계신가요?\n\n{이름} 님, 안녕하세요. 온보딩 담당 HR입니다.\n입사 ${s.day}일을 맞아 짧은 설문(2분)을 부탁드립니다.\n응답은 HR만 보며 매니저에게 개별 공개하지 않습니다.\n\n{링크}`;
-  modal(`${made.length}명에게 보낼 준비가 됐습니다`, `<p class="m-note" style="margin:0 0 8px">${s.form && s.form.url ? '링크는 사람마다 이메일이 미리 채워진 Google 폼입니다. 응답은 Google 시트에 모이고, 결과 탭의 "응답 시트에서 가져오기"로 반영합니다.' : '지금은 데모용 응답 페이지 링크입니다. 실제로 응답을 받으려면 보내기 탭 위쪽에서 Google 폼을 연결하세요.'}</p>
-    <label class="fld"><span>안내 문구</span><textarea rows="7" readonly id="mail-text">${esc(mail)}</textarea></label>
+  const n = drafts.length, gmail = !!CONN.google.clientId;
+  modal(`${n}명에게 보내기`, `<p class="m-note" style="margin:0 0 8px">${s.form && s.form.url ? '링크는 사람마다 이메일이 미리 채워진 Google 폼입니다. 응답은 Google 시트에 모이고, 결과 탭의 "응답 시트에서 가져오기"로 반영합니다.' : '지금은 데모용 응답 페이지 링크입니다. 실제로 응답을 받으려면 보내기 탭 위쪽에서 Google 폼을 연결하세요.'}</p>
+    <label class="fld"><span>안내 문구 <span class="hint">({이름}, {링크}는 사람마다 바뀌어 들어갑니다)</span></span><textarea rows="7" id="mail-text">${esc(mail)}</textarea></label>
     <table class="tbl compact"><thead><tr><th>입사자</th><th>받는 사람</th><th>개인 링크</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.h.name)}</td><td>${esc(r.to)}</td><td><a href="${esc(r.url)}" target="_blank" rel="noopener">링크 열기</a></td></tr>`).join('')}</tbody></table>
-    ${CONN.google.clientId ? `<div class="row-act"><button type="button" class="btn primary" id="gmail-all">Gmail로 ${made.length}명에게 바로 보내기</button></div>` : `<p class="m-note"><a href="#connect">연결 설정</a>에서 Gmail을 연결하면 사람마다 다른 링크를 넣어 여기서 바로 보낼 수 있습니다.</p>`}
-    <div class="row-act"><button type="button" class="btn" id="copy-mail">안내 문구 복사</button><button type="button" class="btn" id="copy-links">받는 사람·링크 목록 복사 (엑셀 붙여넣기용)</button></div>`, null, null, true);
-  $('#copy-mail').onclick = () => copy(mail);
-  if ($('#gmail-all')) $('#gmail-all').onclick = e => { const btn = e.currentTarget; btn.disabled = true; btn.textContent = '보내는 중…';
-    surveyGmail(rows, mail, made, n => { $('#modal').close(); toast(`Gmail로 ${n}명에게 보냈습니다.`); }).catch(err => { btn.disabled = false; btn.textContent = '다시 보내기'; toast(err.message); }); };
+    ${gmail ? '' : `<div class="send-manual"><b>Gmail이 연결되어 있지 않아 직접 보내야 합니다.</b><ol><li>아래 두 복사 버튼으로 문구와 받는 사람·링크 목록을 복사해 메일을 보냅니다.</li><li>보낸 뒤 <b>보냈다고 표시</b>를 누르면 "응답 기다리는 중"으로 옮겨집니다.</li></ol><span class="hint"><a href="#connect">설정 → 연결</a>에서 Gmail을 연결하면 여기서 바로 보낼 수 있습니다.</span></div>`}
+    <div class="row-act"><button type="button" class="btn" id="copy-mail">안내 문구 복사</button><button type="button" class="btn" id="copy-links">받는 사람·링크 목록 복사 (엑셀 붙여넣기용)</button></div>
+    <p class="m-note">보내지 않고 닫으면 아무것도 기록되지 않고, 보낼 대상에 그대로 남습니다.</p>`,
+    () => {
+      const btn = $('#modal .btn.primary');
+      if (!gmail) {
+        drafts.forEach(x => { x.via = '직접 발송'; S.sends.push(x); });
+        persist(); setTimeout(() => toast(`${n}명을 보냄으로 표시했습니다. 응답 기다리는 중에서 확인하세요.`), 0);
+        return;
+      }
+      btn.disabled = true; btn.textContent = '보내는 중…';
+      surveyGmail(rows, $('#mail-text').value, drafts, k => { $('#modal').close(); toast(`Gmail로 ${k}명에게 보냈습니다.`); })
+        .catch(err => { btn.disabled = false; btn.textContent = '남은 사람에게 다시 보내기'; toast(err.message); });
+      return false;
+    }, gmail ? `Gmail로 ${n}명에게 보내기` : '보냈다고 표시', true);
+  $('#copy-mail').onclick = () => copy($('#mail-text').value);
   $('#copy-links').onclick = () => copy('이름\t받는 사람\t링크\n' + rows.map(r => `${r.h.name}\t${r.to}\t${r.url}`).join('\n'), '목록을 복사했습니다. 엑셀이나 메일 병합에 붙여넣으세요.');
   $('#modal').addEventListener('close', render, { once: true });
 }

@@ -89,7 +89,7 @@ function openCompose(opt) {
     const job = via === 'gmail' ? gmailSend(m) : slackSend(CONN.slack[opt.slack], `*${m.subject}*\n${m.body}`);
     job.then(() => { $('#modal').close(); toast(via === 'gmail' ? 'Gmail로 보냈습니다.' : 'Slack 채널로 보냈습니다.'); opt.onSent && opt.onSent(via === 'gmail' ? 'Gmail' : 'Slack'); })
       .catch(e => { btn.disabled = false; btn.textContent = '보내기'; let p = f.querySelector('.m-err'); if (!p) { p = document.createElement('p'); p.className = 'm-err'; f.querySelector('.m-act').before(p); } p.textContent = e.message; });
-    return null;
+    return false;
   }, '보내기', true);
   const f = $('#modal form');
   const sync = () => { const v = f.querySelector('[name=ch]:checked').value; f.querySelectorAll('.ch').forEach(l => l.classList.toggle('on', l.querySelector('input').checked)); f.querySelector('.ch-mail').hidden = v === 'slack'; f.querySelector('.btn.primary').textContent = v === 'copy' ? '복사하기' : v === 'mailto' ? '메일 앱 열기' : '보내기'; };
@@ -117,11 +117,16 @@ const lastAsk = rid => (S.asks || []).filter(a => a.rid === rid).slice(-1)[0];
 
 /* 설문: 사람마다 링크가 다른 메일을 Gmail로 한 번에 보낸다 */
 function surveyGmail(rows, mail, sends, done) {
+  // 한 통 보낼 때마다 그 사람만 발송 기록에 넣는다. 중간에 실패하면 다시 눌렀을 때 남은 사람에게만 보낸다.
   const [subject, , ...rest] = mail.split('\n'); const tpl = rest.join('\n');
   let n = 0;
-  const one = i => i >= rows.length ? Promise.resolve() :
-    gmailSend({ to: rows[i].to, subject, body: tpl.replace('{이름}', rows[i].h.name).replace('{링크}', rows[i].url) }).then(() => { sends[i].via = 'Gmail'; n++; return one(i + 1); });
-  return one(0).then(() => { persist(); done(n); }, e => { persist(); throw new Error(`${n}명까지 보냈습니다. ` + e.message); });
+  const one = i => {
+    if (i >= rows.length) return Promise.resolve();
+    if (sends[i].via === 'Gmail') return one(i + 1);
+    return gmailSend({ to: rows[i].to, subject, body: tpl.split('{이름}').join(rows[i].h.name).split('{링크}').join(rows[i].url) })
+      .then(() => { sends[i].via = 'Gmail'; S.sends.push(sends[i]); persist(); n++; return one(i + 1); });
+  };
+  return one(0).then(() => done(n), e => { const sent = sends.filter(x => x.via === 'Gmail').length; throw new Error(`${sent}명까지 보냈습니다. ` + e.message); });
 }
 
 /* ───────── 가져오기: Google 시트·API ───────── */
