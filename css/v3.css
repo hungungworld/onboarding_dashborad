@@ -385,3 +385,8 @@ a.btn { text-decoration: none; }
 #survey-edit { margin-top: 0; }
 .form-bar + #survey-edit, .form-bar + .panel { margin-top: 16px; }
 .up-hol { background: var(--line-2); color: var(--sub); }
+
+/* 줄바꿈 규칙: 입력칸·안내 문구(placeholder)도 단어 중간에서 끊지 않는다 */
+html { word-break: keep-all; overflow-wrap: break-word; }
+input, textarea, select, button { word-break: keep-all; overflow-wrap: break-word; }
+::placeholder { word-break: keep-all; overflow-wrap: break-word; }

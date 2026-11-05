@@ -336,7 +336,7 @@ function openCellMenu(btn, mode) {
   if (!p) { p = document.createElement('div'); p.id = 'cellpop'; p.className = 'cellpop'; p.setAttribute('role', 'dialog'); document.body.appendChild(p); }
   document.querySelectorAll('.matrix td.c button.sel').forEach(b => b.classList.remove('sel')); btn.classList.add('sel');
   const body = mode === 'memo'
-    ? `<textarea id="cp-memo" rows="3" placeholder="무엇이 문제인지 적어 두세요. 예: 서류 재발급 중, 11/8 제출 예정">${esc(t.memo)}</textarea>
+    ? `<textarea id="cp-memo" rows="3" placeholder="무엇이 문제인지 적어 두세요.&#10;예: 서류 재발급 중, 11/8 제출">${esc(t.memo)}</textarea>
        <div class="cp-row"><button type="button" class="btn" data-pa="back">취소</button><button type="button" class="btn primary" data-pa="save">메모 저장</button></div>`
     : `${t.memo ? `<div class="cp-memo">${esc(t.memo)}</div>` : ''}<div class="cp-acts">
        ${t.done ? `<button type="button" class="btn" data-pa="undo">완료 취소<small>다시 할 일로</small></button>` : `<button type="button" class="btn primary" data-pa="done">✓ 완료로 표시</button>`}
@@ -702,7 +702,7 @@ function importPanel(src) {
       <button class="alt" data-act="api-toggle" aria-expanded="false" aria-controls="api-box"><b>Google 시트·API로 연결</b><span>한 번 연결해 두면 다음부터 버튼 한 번으로 받아옵니다.</span></button>
     </div>
     ${apiBox(src)}
-    <div id="paste-box" class="paste-box" hidden><textarea id="imp-paste" rows="6" placeholder="엑셀에서 머리글 줄까지 선택해 복사(Ctrl+C)한 뒤 여기에 붙여넣으세요(Ctrl+V)"></textarea><div class="row-act"><button class="btn primary" data-act="imp-paste">붙여넣은 내용 읽기</button></div></div>`
+    <div id="paste-box" class="paste-box" hidden><textarea id="imp-paste" rows="6" placeholder="엑셀에서 머리글 줄까지 선택해 복사(Ctrl+C)한 뒤&#10;여기에 붙여넣으세요(Ctrl+V)"></textarea><div class="row-act"><button class="btn primary" data-act="imp-paste">붙여넣은 내용 읽기</button></div></div>`
   : step === 2 ? mappingStep(src) : planStep(src)}`;
 }
 
