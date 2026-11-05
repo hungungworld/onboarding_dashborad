@@ -286,6 +286,51 @@ function togglePrepGroup(o) {
   try { localStorage.setItem(PREP_OPEN_KEY, JSON.stringify(UI.prepOpen)); } catch (e) { /* 저장 불가 */ }
   render();
 }
+/* 현황판 칸 선택창: 완료 · 완료 취소 · 메모 남기기/고치기 · 해결됨 */
+function memoValue(t, m) { return m && m !== t.memo && !/^\d+\/\d+ /.test(m) ? D.md(TODAY) + ' ' + m : m; }
+function closeCellMenu() { const p = $('#cellpop'); if (p) p.hidden = true; document.querySelectorAll('.matrix td.c button.sel').forEach(b => b.classList.remove('sel')); }
+function openCellMenu(btn, mode) {
+  const t = S.tasks.find(x => x.id === btn.dataset.id); if (!t) return;
+  const h = hireOf(t.key), s = taskStatus(t, TODAY);
+  let p = $('#cellpop');
+  if (!p) { p = document.createElement('div'); p.id = 'cellpop'; p.className = 'cellpop'; p.setAttribute('role', 'dialog'); document.body.appendChild(p); }
+  document.querySelectorAll('.matrix td.c button.sel').forEach(b => b.classList.remove('sel')); btn.classList.add('sel');
+  const body = mode === 'memo'
+    ? `<textarea id="cp-memo" rows="3" placeholder="무엇이 문제인지 적어 두세요. 예: 서류 재발급 중, 11/8 제출 예정">${esc(t.memo)}</textarea>
+       <div class="cp-row"><button type="button" class="btn" data-pa="back">취소</button><button type="button" class="btn primary" data-pa="save">메모 저장</button></div>`
+    : `${t.memo ? `<div class="cp-memo">${esc(t.memo)}</div>` : ''}<div class="cp-acts">
+       ${t.done ? `<button type="button" class="btn" data-pa="undo">완료 취소<small>다시 할 일로</small></button>` : `<button type="button" class="btn primary" data-pa="done">✓ 완료로 표시</button>`}
+       ${t.memo ? `<button type="button" class="btn" data-pa="memo">메모 고치기</button><button type="button" class="btn" data-pa="clear">해결됨<small>메모 지우기</small></button>` : `<button type="button" class="btn" data-pa="memo">? 메모 남기기<small>문제로 표시됨</small></button>`}
+       <a class="btn" href="#hire/${encodeURIComponent(h.key)}" data-pa="person">${esc(h.name)} 님 전체 할 일 보기 →</a></div>`;
+  p.innerHTML = `<div class="cp-head"><div><b>${esc(h.name)} · ${esc(shortTitle(t.title))}</b><span>${D.md(t.due)}까지 ${chip(s)}</span></div><button type="button" class="cp-x" data-pa="close" aria-label="닫기">×</button></div>${body}`;
+  p.dataset.id = t.id; p.hidden = false;
+  const r = btn.getBoundingClientRect();
+  const left = Math.max(12, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - p.offsetWidth - 12));
+  let top = r.bottom + window.scrollY + 6;
+  if (r.bottom + p.offsetHeight + 12 > window.innerHeight) top = Math.max(window.scrollY + 12, r.top + window.scrollY - p.offsetHeight - 6);
+  p.style.left = left + 'px'; p.style.top = top + 'px';
+  if (mode === 'memo') $('#cp-memo').focus(); else p.querySelector('button[data-pa]:not(.cp-x)').focus();
+}
+document.addEventListener('click', e => {
+  const p = $('#cellpop'); if (!p || p.hidden) return;
+  const a = e.target.closest('#cellpop [data-pa]');
+  if (!a) { if (!p.contains(e.target) && !e.target.closest('[data-act="cell-menu"]')) closeCellMenu(); return; }
+  const t = S.tasks.find(x => x.id === p.dataset.id), act = a.dataset.pa;
+  const btn = document.querySelector(`.matrix [data-act="cell-menu"][data-id="${CSS.escape(p.dataset.id)}"]`);
+  if (act === 'person') { closeCellMenu(); return; }
+  e.preventDefault();
+  if (act === 'close') return closeCellMenu();
+  if (act === 'memo') return openCellMenu(btn, 'memo');
+  if (act === 'back') return openCellMenu(btn);
+  if (act === 'done') { t.done = TODAY; t.by = 'HR 체크'; t.memo = ''; toast('완료로 표시했습니다.'); }
+  if (act === 'undo') { t.done = ''; t.by = ''; toast('완료를 취소했습니다.'); }
+  if (act === 'save') { const m = $('#cp-memo').value.trim(); t.memo = memoValue(t, m); toast(m ? '메모를 남겼습니다. 보라 ?로 표시됩니다.' : '메모를 비워서 해결로 처리했습니다.'); }
+  if (act === 'clear') { t.memo = ''; toast('해결로 처리했습니다.'); }
+  closeCellMenu(); save();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCellMenu(); });
+window.addEventListener('hashchange', closeCellMenu);
+
 function viewPrep(dv) {
   const { st, info } = dv;
   const cohorts = [...new Set(S.hires.filter(h => h.cohort).map(h => h.cohort))];
@@ -310,7 +355,7 @@ function viewPrep(dv) {
     if (!t || t.closed) return '<td class="c c-na" title="해당 없음">–</td>';
     const s = st.get(t.id);
     const sym = { 완료: '✓', 지연: '!', 문제: '?', 진행: '·', 대기: '' }[s];
-    return `<td class="c c-${STC[s]}"><button data-act="toggle" data-id="${esc(t.id)}" title="${esc(c.title)} · ${s}${t.memo ? ' · ' + esc(t.memo) : ''} · ${D.md(t.due)}까지">${sym}</button></td>`;
+    return `<td class="c c-${STC[s]}"><button data-act="cell-menu" data-id="${esc(t.id)}" aria-haspopup="dialog" title="${esc(c.title)} · ${s}${t.memo ? ' · ' + esc(t.memo) : ''} · ${D.md(t.due)}까지">${sym}</button></td>`;
   };
   const sumOf = (h, g) => {
     const ts = g.all.map(c => taskOf(h, c)).filter(t => t && !t.closed);
@@ -321,7 +366,7 @@ function viewPrep(dv) {
 
   return `
   <header class="page-head">
-    <div><h1>입사 준비 현황판</h1><p class="sub">담당 이름을 누르면 항목별로 펼쳐집니다. 칸을 누르면 완료로 표시되고, 항목 아래 빨간 숫자를 누르면 아직 안 된 사람 명단을 복사합니다.</p></div>
+    <div><h1>입사 준비 현황판</h1><p class="sub">담당 이름을 누르면 항목별로 펼쳐집니다. 칸을 누르면 완료·메모를 고를 수 있고, 항목 아래 빨간 숫자를 누르면 아직 안 된 사람 명단을 복사합니다.</p></div>
     <div class="head-act">
       <select data-f="prepScope" aria-label="범위">
         <option value="upcoming" ${UI.prepScope === 'upcoming' ? 'selected' : ''}>입사 30일 전 ~ 입사 첫 주</option>
@@ -882,7 +927,7 @@ function actMemo(id) {
   const t = S.tasks.find(x => x.id === id), h = hireOf(t.key);
   modal('메모 · ' + esc(t.title), `<p class="m-note" style="margin:0 0 10px">${esc(h.name)} · ${D.md(t.due)}까지. 메모가 있으면 '문제'로 표시되고, 비우면 해결로 처리됩니다.</p><label class="fld"><span>메모</span><textarea name="memo" rows="3">${esc(t.memo)}</textarea></label>`, fd => {
     const m = String(fd.get('memo') || '').trim();
-    t.memo = m && m !== t.memo && !/^\d+\/\d+ /.test(m) ? D.md(TODAY) + ' ' + m : m;
+    t.memo = memoValue(t, m);
     save(); toast(m ? '메모를 남겼습니다.' : '해결로 처리했습니다.');
   });
 }
@@ -961,6 +1006,7 @@ document.addEventListener('click', e => {
     sample: () => downloadSample(b.dataset.src),
     'paste-toggle': () => { const box = $('#paste-box'), open = box.hidden; box.hidden = !open; b.setAttribute('aria-expanded', open); b.classList.toggle('on', open); if (open) $('#imp-paste').focus(); },
     'prep-group': () => togglePrepGroup(b.dataset.o),
+    'cell-menu': () => { const p = $('#cellpop'); if (p && !p.hidden && p.dataset.id === b.dataset.id) closeCellMenu(); else openCellMenu(b); },
     'nav-toggle': () => setNavCollapsed(!document.body.classList.contains('nav-collapsed')),
     'imp-paste': () => { const t = $('#imp-paste').value; if (!t.trim()) { toast('붙여넣은 내용이 없습니다.'); return; } loadGrid(parseText(t), '붙여넣기'); },
     'imp-reset': () => { IMP = null; render(); }, 'imp-plan': makePlan, 'imp-back': () => { IMP.plan = null; render(); }, 'imp-apply': applyPlan,
