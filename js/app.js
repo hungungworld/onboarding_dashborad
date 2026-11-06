@@ -89,7 +89,7 @@ function derive() {
       if (issues.length) signals.push(['issue', '문제 보고 ' + issues.length + '건']);
       if (late.length) signals.push([late.length >= 2 || stage === '입사 전' ? 'bad' : 'warn', late.slice(0, 2).map(t => shortTitle(t.title)).join(', ') + (late.length > 2 ? ' 외 ' + (late.length - 2) + '건' : '') + ' 지연']);
       if (avg !== null && avg <= 2.5) signals.push(['bad', '설문 점수 ' + avg.toFixed(1)]);
-      if (help) signals.push(['bad', '매니저가 HR 도움 요청']);
+      if (help) signals.push(['bad', '매니저 도움 요청']);
     }
     info.set(h.key, { list, live, done, total: live.length, late, issues, avg, stage, signals });
   });
@@ -228,7 +228,8 @@ function viewToday(dv, tab) {
     soon: () => tags(['입사 2주 이내', '7일 이내 준비 미완료 우선'], 'tab-hint') +
       (arriving.length ? `<ul class="arrive rows">${arriving.map(({ h, pre, done, k, risk }) => `<li><span class="st st-${risk ? 'bad' : 'wait'}">${k === 0 ? '오늘' : 'D-' + k}</span><div class="t-main"><div class="a-top">${link(h)}<span class="w-meta">${orgName(h.org)} · ${D.md(h.start)}(${D.dow(h.start)}) 입사</span></div>
         <div class="prog"><div class="bar ${risk ? 'bad' : ''}"><i style="width:${pct(done, pre.length) || 0}%"></i></div><span>준비 ${done}/${pre.length}</span></div></div></li>`).join('')}</ul><a class="more" href="#prep">현황판에서 전체 보기</a>` : '<p class="empty">2주 안에 입사하는 사람이 없습니다.</p>'),
-    watch: () => tags(['기한 지연', '문제 보고', '낮은 설문 점수', '매니저 도움 요청'], 'tab-hint') +
+    // 안내 태그는 목록 배지와 같은 색 (가벼운 지연만 있는 사람은 여기 안 나오므로 기한 지연은 빨강)
+    watch: () => `<p class="tags tab-hint">${[['bad', '기한 지연'], ['issue', '문제 보고'], ['bad', '낮은 설문 점수'], ['bad', '매니저 도움 요청']].map(([c, t]) => `<span class="sg sg-${c}">${t}</span>`).join('')}</p>` +
       (watch.length ? `<ul class="watch rows">${watch.map(h => `<li><div class="a-top">${link(h)}<span class="w-meta">${orgName(h.org)} · ${info.get(h.key).stage}</span></div><div>${info.get(h.key).signals.map(s => `<span class="sg sg-${s[0]}">${esc(s[1])}</span>`).join('')}</div></li>`).join('')}</ul>` : '<p class="empty">위험 신호가 있는 입사자가 없습니다.</p>') +
       (pendingResp.length ? `<h3 class="tab-sub">설문 응답 3일 이상 대기 <span class="count">${pendingResp.length}명</span></h3><ul class="plain">${pendingResp.map(x => { const h = hireOf(x.key), s = S.surveys.find(v => v.id === x.survey); return h ? `<li><span>${link(h)} · ${esc(s ? s.name : '')}</span><span>${D.diff(TODAY, x.sentAt)}일째</span></li>` : ''; }).join('')}</ul>` : ''),
   };
