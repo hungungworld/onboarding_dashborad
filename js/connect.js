@@ -75,14 +75,14 @@ function openCompose(opt) {
   const demo = /@(mail-)?demo(-corp)?\.kr/.test((opt.to || '') + (opt.bcc || ''));
   modal(esc(opt.title), `
     <div class="ch-pick" role="radiogroup" aria-label="보내는 방법">${ch.map(([k, l]) => `<label class="ch ${k === def ? 'on' : ''}"><input type="radio" name="ch" value="${k}" ${k === def ? 'checked' : ''}>${l}</label>`).join('')}</div>
-    ${CONN.google.clientId ? '' : `<p class="m-note">Gmail이나 Slack으로 바로 보내려면 <a href="#connect">연결 설정</a>에서 연결하세요. 지금은 메일 앱에서 열거나 복사할 수 있습니다.</p>`}
+    ${CONN.google.clientId ? '' : `<p class="m-note">Gmail·Slack 바로 발송: <a href="#connect">설정 → 연결</a>에서 연동</p>`}
     <div class="ch-mail">
       <label class="fld"><span>받는 사람</span><input name="to" value="${esc(opt.to || '')}" placeholder="${opt.bcc ? '비워 두면 숨은 참조로만 보냅니다 (받는 사람끼리 주소가 안 보임)' : '이름@회사.com, 여러 명은 쉼표로'}"></label>
       ${opt.bcc !== undefined ? `<label class="fld"><span>숨은 참조</span><input name="bcc" value="${esc(opt.bcc || '')}"></label>` : ''}
       <label class="fld"><span>제목</span><input name="subject" value="${esc(opt.subject)}"></label>
     </div>
     <label class="fld"><span>내용</span><textarea name="body" rows="10">${esc(opt.body)}</textarea></label>
-    ${demo ? '<p class="m-note">예시 데이터의 주소(@mail-demo.kr, @demo-corp.kr)는 가짜라 실제로 보내면 반송됩니다. 시험할 때는 받는 사람을 본인 주소로 바꾸세요.</p>' : ''}`,
+    ${demo ? '<p class="m-note">예시 주소(@mail-demo.kr, @demo-corp.kr): 반송됨 · 시험 시 본인 주소로 변경</p>' : ''}`,
   (fd, f) => {
     const via = fd.get('ch'), m = { to: String(fd.get('to') || '').trim(), bcc: String(fd.get('bcc') || '').trim(), subject: String(fd.get('subject') || ''), body: String(fd.get('body') || '') };
     if (via === 'copy') { copy(m.subject + '\n\n' + m.body); return; }
@@ -215,39 +215,39 @@ function apiBox(src) {
 
 /* ───────── 연결 설정 화면 ───────── */
 function viewConnect() {
-  const ok = v => v ? '<span class="sg sg-ok">연결됨</span>' : '<span class="sg sg-off">연결 안 됨</span>';
+  const ok = v => v ? '<span class="sg sg-ok">연동됨</span>' : '<span class="sg sg-off">미연동</span>';
   // 한 줄에 하나씩: 왼쪽은 무엇·왜, 오른쪽은 넣을 칸, 만드는 법은 상자 맨 아래에 가로로 펼침
   const row = (title, status, hint, howto, fields) => `<section class="panel conn-row">
       <div class="conn-info"><div class="conn-title"><h2>${title}</h2>${status}</div><p class="hint">${hint}</p></div>
       <div class="conn-fields">${fields}</div>${howto ? `<div class="conn-howto">${howto}</div>` : ''}</section>`;
   return `
   ${setupHead('connect')}
-  <header class="page-head"><div><p class="sub">Gmail·Slack으로 바로 보내고, Google 시트·API에서 바로 가져오도록 연결합니다. 모두 무료로 쓸 수 있습니다.</p></div></header>
+  <header class="page-head"><div>${tags(['Gmail·Slack 발송', '시트·API·Google 폼 연동', '모두 무료'], 'sub')}</div></header>
   <form id="conn-form" class="conn-list">
     ${row('Google', ok(CONN.google.clientId), 'Gmail로 보내기 · 설문 Google 폼 만들기 · 시트 읽기',
-      `<details class="howto"><summary>Client ID 만드는 법</summary><ol>
-        <li>Google Cloud 콘솔에서 프로젝트를 만들고 <b>Gmail API</b>, <b>Google Sheets API</b>, <b>Google Forms API</b>를 사용 설정합니다.</li>
-        <li>OAuth 동의 화면을 "외부"로 만들고, 테스트 사용자에 본인 Gmail을 넣습니다.</li>
-        <li>사용자 인증 정보 → OAuth 클라이언트 ID → 웹 애플리케이션을 고릅니다.</li>
-        <li>승인된 JavaScript 원본에 <code>${esc(location.origin)}</code>를 넣고, 만들어진 Client ID를 붙여넣습니다.</li>
-      </ol><p class="hint">비밀 키(Client Secret)는 필요 없습니다. 메일은 로그인한 본인 계정에서 나갑니다.</p></details>`,
+      `<details class="howto"><summary>Client ID 발급 방법</summary><ol>
+        <li>Google Cloud 콘솔 → 프로젝트 생성 → <b>Gmail · Sheets · Forms API</b> 사용 설정</li>
+        <li>OAuth 동의 화면: <b>외부</b> · 테스트 사용자에 본인 Gmail</li>
+        <li>사용자 인증 정보 → OAuth 클라이언트 ID → <b>웹 애플리케이션</b></li>
+        <li>승인된 JavaScript 원본: <code>${esc(location.origin)}</code> → Client ID 붙여넣기</li>
+      </ol><p class="hint">Client Secret 불필요 · 로그인한 본인 계정으로 발송</p></details>`,
       `<label class="fld"><span>OAuth Client ID</span><input name="g_client" value="${esc(CONN.google.clientId)}" placeholder="1234-abcd.apps.googleusercontent.com" autocomplete="off" spellcheck="false"></label>
-      <div class="row-act"><button type="button" class="btn" data-act="g-test">Google 로그인 시험</button></div>`)}
-    ${row('Slack', ok(CONN.slack.it || CONN.slack.ga), 'IT·총무 채널에 요청 올리기',
-      `<details class="howto"><summary>웹훅 만드는 법</summary><ol>
-        <li>api.slack.com/apps에서 앱을 만들고 <b>Incoming Webhooks</b>를 켭니다.</li>
-        <li>"Add New Webhook to Workspace"로 채널을 고르면 주소가 나옵니다.</li>
-        <li>채널마다 하나씩 만들어 붙여넣습니다.</li>
-      </ol><p class="hint">웹훅 주소를 아는 사람은 누구나 그 채널에 글을 올릴 수 있습니다. 공용 PC에서는 넣지 마세요.</p></details>`,
+      <div class="row-act"><button type="button" class="btn" data-act="g-test">로그인 테스트</button></div>`)}
+    ${row('Slack', ok(CONN.slack.it || CONN.slack.ga), 'IT·총무 채널 요청 게시',
+      `<details class="howto"><summary>웹훅 발급 방법</summary><ol>
+        <li>api.slack.com/apps → 앱 생성 → <b>Incoming Webhooks</b> 켜기</li>
+        <li>Add New Webhook to Workspace → 채널 선택 → 주소 발급</li>
+        <li>채널별로 하나씩 붙여넣기</li>
+      </ol><p class="hint">웹훅 주소 = 채널 게시 권한 · 공용 PC 입력 금지</p></details>`,
       `<div class="fld-2"><label class="fld"><span>IT 요청 채널 웹훅</span><input name="s_it" value="${esc(CONN.slack.it || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label>
       <label class="fld"><span>총무 요청 채널 웹훅</span><input name="s_ga" value="${esc(CONN.slack.ga || '')}" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false"></label></div>
-      <div class="row-act"><button type="button" class="btn" data-act="s-test">시험 메시지 보내기</button></div>`)}
-    ${row('메일로 받을 담당자', '', 'Slack 대신 메일로 IT·총무에 요청할 때 받는 주소. 지금은 예시 주소가 들어 있으니 실제 주소로 바꾸세요.', '',
+      <div class="row-act"><button type="button" class="btn" data-act="s-test">테스트 메시지</button></div>`)}
+    ${row('메일로 받을 담당자', '', '메일 요청 수신 주소 · 현재 예시 주소', '',
       `<div class="fld-2"><label class="fld"><span>IT 담당 메일</span><input name="m_it" type="email" value="${esc(CONN.mail.it || '')}" placeholder="it-help@회사.com"></label>
       <label class="fld"><span>총무 담당 메일</span><input name="m_ga" type="email" value="${esc(CONN.mail.ga || '')}" placeholder="ga@회사.com"></label></div>`)}
-    ${row('데이터 연결', '', '각 데이터를 어떻게 받아오는지 보여 줍니다. 연결은 데이터 가져오기 탭에서 합니다.', '',
-      `<ul class="plain">${Object.keys(SOURCES).map(k => { const c = CONN.sources[k]; return `<li><a href="#import/${k}">${SOURCES[k].name}</a><span>${c ? (c.kind === 'api' ? 'API' : 'Google 시트') + (c.at ? ' · ' + D.md(c.at) + ' 가져옴' : '') : '<span class="muted">파일로 올림</span>'}</span></li>`; }).join('')}</ul>`)}
-    <div class="conn-save"><button class="btn primary" data-act="conn-save">저장</button><span class="hint">연결 정보는 이 브라우저에만 저장되고 어떤 서버로도 보내지 않습니다.</span></div>
+    ${row('데이터 연동', '', '데이터별 수집 방식 · 연동은 데이터 가져오기 탭', '',
+      `<ul class="plain">${Object.keys(SOURCES).map(k => { const c = CONN.sources[k]; return `<li><a href="#import/${k}">${SOURCES[k].name}</a><span>${c ? (c.kind === 'api' ? 'API' : 'Google 시트') + (c.at ? ' · ' + D.md(c.at) + ' 가져옴' : '') : '<span class="muted">파일 업로드</span>'}</span></li>`; }).join('')}</ul>`)}
+    <div class="conn-save"><button class="btn primary" data-act="conn-save">저장</button><span class="hint">연동 정보: 이 브라우저에만 저장 · 서버 전송 없음</span></div>
   </form>`;
 }
 function readConnForm() {
@@ -295,25 +295,26 @@ function formLink(s, h, to) {
 }
 function formPanel(s) {
   const f = s.form || {}, mgr = s.audience === '매니저';
-  if (f.api) return `<section class="panel form-bar"><div><b>응답 받는 곳: Google 폼 (문항 만들기에서 만든 폼)</b><span class="w-meta">메일 속 링크는 이메일${mgr ? '·입사자 이름' : ''}이 미리 채워진 이 폼으로 갑니다. 응답은 결과 탭에서 바로 가져옵니다.</span></div>
-    <div class="row-act"><a class="btn ghost" href="${esc(f.responder)}" target="_blank" rel="noopener">폼 열기</a><a class="btn ghost" href="#survey/${s.id}/edit">문항 만들기에서 관리</a></div></section>`;
+  if (f.api) return `<section class="panel form-bar"><div><b>응답 수집: Google 폼 (자동 생성)</b><span class="w-meta">이메일${mgr ? '·입사자 이름' : ''} 자동 입력 · 결과 탭에서 가져오기</span></div>
+    <div class="row-act"><a class="btn ghost" href="${esc(f.responder)}" target="_blank" rel="noopener">폼 열기</a><a class="btn ghost" href="#survey/${s.id}/edit">문항 관리</a></div></section>`;
   if (f.url && !UI.formEdit) return `<section class="panel form-bar">
-    <div><b>응답 받는 곳: Google 폼</b><span class="w-meta">메일 속 링크는 이메일${mgr ? '·입사자 이름' : ''}이 미리 채워진 Google 폼으로 갑니다. ${f.sheet ? '응답 시트 연결됨 · 결과 탭에서 가져옵니다.' : '<b class="warn-t">응답 시트가 아직 없습니다.</b>'}</span></div>
+    <div><b>응답 수집: Google 폼 (직접 연결)</b><span class="w-meta">이메일${mgr ? '·입사자 이름' : ''} 자동 입력 · ${f.sheet ? '응답 시트 연동됨' : '<b class="warn-t">응답 시트 미연동</b>'}</span></div>
     <div class="row-act"><a class="btn ghost" href="${esc(f.url)}" target="_blank" rel="noopener">폼 열기</a><button class="btn ghost" data-act="form-edit">바꾸기</button></div></section>`;
   return `<section class="panel form-setup">
-    <div class="panel-head"><h2>응답 받는 곳</h2>${f.url ? '' : '<span class="sg sg-warn">아직 Google 폼 없음</span>'}</div>
-    <p class="hint">${f.url ? '' : '지금은 데모용 응답 페이지로 보냅니다. 이 페이지는 응답이 <b>입사자 브라우저에만</b> 저장되어 HR 화면으로 돌아오지 않습니다. '}Google 폼을 연결하면 응답이 HR에게 모입니다. <b>가장 쉬운 방법은 <a href="#survey/${s.id}/edit">문항 만들기</a> 탭에서 "이 문항으로 Google 폼 만들기"를 누르는 것</b>입니다(Google 연결 필요). 이미 만든 폼이 있으면 아래에 직접 연결해도 됩니다.</p>
+    <div class="panel-head"><h2>응답 수집</h2>${f.url ? '' : '<span class="sg sg-warn">Google 폼 미연동</span>'}</div>
+    ${f.url ? '' : tags(['현재: 데모 응답 페이지', '응답이 입사자 브라우저에만 저장 → HR 미수신'])}
+    ${tags([`추천: <a href="#survey/${s.id}/edit">문항 만들기</a>에서 Google 폼 생성`, '또는 기존 폼 직접 연결'])}
     <div class="fld-2">
-      <label class="fld"><span>Google 폼 사전 입력 링크</span><input id="form-url" value="${esc(f.url || '')}" placeholder="https://docs.google.com/forms/d/e/…/viewform?usp=pp_url&amp;entry.…=test@test.com"></label>
-      <label class="fld"><span>응답 시트 주소</span><input id="form-sheet" value="${esc(f.sheet || '')}" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
+      <label class="fld"><span>사전 입력 링크</span><input id="form-url" value="${esc(f.url || '')}" placeholder="https://docs.google.com/forms/d/e/…/viewform?usp=pp_url&amp;entry.…=test@test.com"></label>
+      <label class="fld"><span>응답 시트 URL</span><input id="form-sheet" value="${esc(f.sheet || '')}" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
     </div>
-    <div class="row-act"><button class="btn primary" data-act="form-save" data-s="${s.id}">저장</button>${f.url ? '<button class="btn ghost" data-act="form-cancel">취소</button>' : ''}<button class="btn ghost" data-act="copy-qs" data-s="${s.id}">Google 폼에 넣을 문항 복사</button></div>
-    <details class="howto"><summary>Google 폼 연결하는 법</summary><ol>
-      <li>Google 폼을 새로 만들고, 첫 문항으로 <b>이메일</b>(단답형)을 넣습니다.${mgr ? ' 두 번째로 <b>입사자 이름</b>(단답형)을 넣습니다.' : ''}</li>
-      <li>나머지 문항은 "Google 폼에 넣을 문항 복사"로 복사한 문구를 <b>그대로</b> 씁니다. 문구가 같아야 결과를 가져올 때 자동으로 맞춰집니다.</li>
-      <li>폼 오른쪽 위 ⋮ → <b>사전 입력된 링크 가져오기</b> → 이메일 칸에 <code>test@test.com</code>${mgr ? ', 입사자 이름 칸에 <code>홍길동</code>' : ''}을 넣고 <b>링크 가져오기 → 링크 복사</b>를 누른 뒤 위 첫 칸에 붙여넣습니다.</li>
-      <li>폼의 <b>응답</b> 탭 → <b>Sheets에 연결</b>로 시트를 만들고, 그 시트 주소를 위 둘째 칸에 붙여넣습니다. 시트는 "링크가 있는 모든 사용자"로 공유하거나, 설정 → 연결에서 Google을 연결해 두면 읽을 수 있습니다.</li>
-    </ol><p class="hint">보낼 때는 대시보드가 사람마다 이메일${mgr ? '·입사자 이름' : ''}을 바꿔 넣은 링크를 만들어, 한 사람에 한 통씩 보냅니다.</p></details>
+    <div class="row-act"><button class="btn primary" data-act="form-save" data-s="${s.id}">저장</button>${f.url ? '<button class="btn ghost" data-act="form-cancel">취소</button>' : ''}<button class="btn ghost" data-act="copy-qs" data-s="${s.id}">문항 복사</button></div>
+    <details class="howto"><summary>직접 연결 방법</summary><ol>
+      <li>Google 폼 생성 → 첫 문항 <b>이메일</b>(단답형)${mgr ? ' · 둘째 문항 <b>입사자 이름</b>(단답형)' : ''}</li>
+      <li>나머지 문항: <b>문항 복사</b>한 문구 그대로 (문구가 같아야 자동 매칭)</li>
+      <li>⋮ → <b>사전 입력된 링크 가져오기</b> → 이메일 <code>test@test.com</code>${mgr ? ' · 입사자 이름 <code>홍길동</code>' : ''} → 링크 복사 → 첫 칸</li>
+      <li>응답 탭 → <b>Sheets에 연결</b> → 시트 URL → 둘째 칸 (링크 공유 또는 Google 연동 필요)</li>
+    </ol></details>
   </section>`;
 }
 function pullSurveySheet(s) {
@@ -414,11 +415,11 @@ function busy(b, label, job) {
 function gformBox(s) {
   const f = s.form || {};
   const edit = f.id ? `https://docs.google.com/forms/d/${f.id}/edit` : '';
-  if (!CONN.google.clientId) return `<section class="panel form-bar"><div><b>Google 폼과 연결</b><span class="w-meta">Google을 연결하면 이 문항 그대로 Google 폼을 만들고, 문항을 고칠 때마다 폼에도 반영합니다.</span></div><div class="row-act"><a class="btn" href="#connect">설정 → 연결에서 Google 연결</a></div></section>`;
-  if (f.api) return `<section class="panel form-bar ${f.dirty ? 'is-dirty' : ''}"><div><b>Google 폼과 연결됨</b><span class="w-meta">${f.dirty ? '<b class="warn-t">고친 문항이 아직 Google 폼에 반영되지 않았습니다.</b>' : `문항을 저장하면 Google 폼에도 자동으로 반영됩니다. 마지막 반영 ${D.md(f.syncedAt)}.`}</span></div>
-    <div class="row-act">${f.dirty ? `<button class="btn primary" data-act="gform-sync" data-s="${s.id}">지금 반영</button>` : ''}<a class="btn ghost" href="${esc(f.responder)}" target="_blank" rel="noopener">응답 화면 보기</a><a class="btn ghost" href="${edit}" target="_blank" rel="noopener">Google 폼에서 열기</a></div></section>`;
-  return `<section class="panel form-bar"><div><b>Google 폼 만들기</b><span class="w-meta">${f.url ? '지금은 직접 연결한 폼을 씁니다. 이 경우 문항을 고쳐도 폼에 반영되지 않습니다. 여기서 새로 만들면 문항이 자동으로 맞춰집니다.' : '아래 문항 그대로 Google 폼을 만듭니다. 이메일' + (s.audience === '매니저' ? '·입사자 이름' : '') + ' 칸은 자동으로 들어가고, 보낼 때 사람마다 미리 채워집니다.'}</span></div>
-    <div class="row-act"><button class="btn primary" data-act="gform-create" data-s="${s.id}">이 문항으로 Google 폼 만들기</button></div></section>`;
+  if (!CONN.google.clientId) return `<section class="panel form-bar"><div><b>Google 폼 연동</b><span class="w-meta">문항 그대로 폼 생성 · 저장 시 자동 반영</span></div><div class="row-act"><a class="btn" href="#connect">Google 연동하기</a></div></section>`;
+  if (f.api) return `<section class="panel form-bar ${f.dirty ? 'is-dirty' : ''}"><div><b>Google 폼 연동됨</b><span class="w-meta">${f.dirty ? '<b class="warn-t">수정 문항 미반영</b>' : `저장 시 자동 반영 · 마지막 반영 ${D.md(f.syncedAt)}`}</span></div>
+    <div class="row-act">${f.dirty ? `<button class="btn primary" data-act="gform-sync" data-s="${s.id}">지금 반영</button>` : ''}<a class="btn ghost" href="${esc(f.responder)}" target="_blank" rel="noopener">응답 화면</a><a class="btn ghost" href="${edit}" target="_blank" rel="noopener">폼 편집</a></div></section>`;
+  return `<section class="panel form-bar"><div><b>Google 폼 생성</b><span class="w-meta">${f.url ? '현재: 직접 연결한 폼 · 문항 자동 반영 안 됨' : '아래 문항 그대로 생성 · 이메일' + (s.audience === '매니저' ? '·입사자 이름' : '') + ' 칸 자동 추가'}</span></div>
+    <div class="row-act"><button class="btn primary" data-act="gform-create" data-s="${s.id}">Google 폼 생성</button></div></section>`;
 }
 Object.assign(CONNECT_ACTS, {
   'gform-create': b => { const s = S.surveys.find(x => x.id === b.dataset.s); if ($('#survey-edit')) readSurveyForm(s);

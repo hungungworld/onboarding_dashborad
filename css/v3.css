@@ -427,3 +427,8 @@ input, textarea, select, button { word-break: keep-all; overflow-wrap: break-wor
 .srcs .src .w-meta { white-space: normal; }
 .drop-req span, .alt span { text-wrap: balance; }
 .imp-log td, .imp-log th { white-space: nowrap; }
+/* 안내 태그 줄: 제목 아래·탭 아래 공통 */
+.page-head .tags.sub { margin: 4px 0 0; }
+.tags.tab-hint { margin: 0 0 10px; }
+.form-setup .tags { margin: 0 0 8px; }
+.one-line td, .one-line th { white-space: nowrap; }

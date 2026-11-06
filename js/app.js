@@ -30,6 +30,8 @@ const link = h => `<a href="#hire/${encodeURIComponent(h.key)}">${esc(h.name)}</
 const shortTitle = t => t.replace(/ \(.*\)/, '').replace(/^(의무|법정)교육: /, '');
 const STC = { 완료: 'ok', 지연: 'bad', 문제: 'issue', 진행: 'now', 대기: 'wait', 종료: 'off' };
 const chip = s => `<span class="st st-${STC[s] || 'wait'}">${s}</span>`;
+/* 짧은 안내 태그 줄 (문장 대신 라벨로) */
+const tags = (list, cls) => `<p class="tags ${cls || ''}">${list.filter(Boolean).map(x => `<i>${x}</i>`).join('')}</p>`;
 const isActive = h => h.status !== '입사 취소' && !h.leave;
 const respondUrl = token => location.origin + location.pathname + '#respond/' + token;
 
@@ -48,7 +50,7 @@ function sendState(x) {
 
 function copy(text, done) {
   const ok = () => toast(done || '복사했습니다. 메일이나 메신저에 붙여넣으세요.');
-  const fallback = () => modal('복사할 내용', `<textarea rows="10" readonly>${esc(text)}</textarea><p class="m-note">위 내용을 선택해서 복사하세요.</p>`, () => {}, '닫기');
+  const fallback = () => modal('복사할 내용', `<textarea rows="10" readonly>${esc(text)}</textarea><p class="m-note">위 내용 선택 후 복사</p>`, () => {}, '닫기');
   if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(ok, fallback); else fallback();
 }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2800); }
@@ -213,20 +215,20 @@ function viewToday(dv, tab) {
         ...legal.map(t => { const h = hireOf(t.key); return `<li><span class="st st-${D.diff(t.due, TODAY) < 0 ? 'bad' : 'law'}">법정</span><div class="t-main"><span><b>${esc(h.name)}</b> · ${esc(shortTitle(t.title))}</span><span class="t-meta">${orgName(h.org)} · ${D.md(h.start)} 입사 · ${dueText(t)}</span></div><div class="t-act"><button class="btn sm" data-act="done" data-id="${esc(t.id)}">완료</button><button class="btn sm ghost" data-act="memo" data-id="${esc(t.id)}">메모</button></div></li>`; }),
         ...waiting.map(([s, t]) => `<li><span class="st st-now">설문</span><div class="t-main"><span>${esc(s.name)} · <b>${t.length}명</b> 발송 대기</span><span class="t-meta">${t.slice(0, 3).map(h => esc(h.name)).join(', ')}${t.length > 3 ? ' 외 ' + (t.length - 3) + '명' : ''}</span></div><div class="t-act"><a class="btn sm" href="#survey/${s.id}">보내기</a></div></li>`),
       ];
-      return `<p class="tab-hint">HR이 직접 처리할 일만 모았습니다. 법정·규정 기한은 2주 안에 오는 것까지 보입니다.</p>` +
+      return tags(['HR 직접 처리', '법정·규정 기한 2주 이내', '설문 발송 대기'], 'tab-hint') +
         (rows.length ? `<ul class="citems rows">${rows.join('')}</ul>` : '<p class="empty">오늘 직접 처리할 일이 없습니다.</p>');
     },
     req: () => {
       const one = g => { const n = lateOf(g); return `<details class="rq"><summary><div class="rq-main"><b>${esc(g.r.label)}</b><span class="w-meta">${esc(g.r.sub)} · ${g.items.length}건</span></div>${n ? `<span class="sg sg-bad">지연 ${n}</span>` : `<span class="sg sg-warn">2일 안</span>`}${lastAsk(g.r.id) ? `<span class="asked">${D.md(lastAsk(g.r.id).at)} 보냄</span>` : ''}<button class="btn sm" data-act="ask" data-r="${esc(g.r.id)}">보내기</button></summary>${contactGroup(g, st, true)}</details>`; };
       const bundle = (label, sub, list) => { if (!list.length) return ''; const n = list.reduce((a, g) => a + lateOf(g), 0), k = list.reduce((a, g) => a + g.items.length, 0);
         return `<details class="rq"><summary><div class="rq-main"><b>${label} ${list.length}명</b><span class="w-meta">${sub} · ${k}건</span></div>${n ? `<span class="sg sg-bad">지연 ${n}</span>` : ''}<span class="rq-open">펼치기</span></summary><div class="rq-sub">${list.map(one).join('')}</div></details>`; };
-      return `<p class="tab-hint">기한이 지났거나 2일 안에 마감인 일을 받는 곳별로 한 줄씩 묶었습니다. 줄을 누르면 항목이 펼쳐집니다.</p>` +
-        (others.length ? teams.map(one).join('') + bundle('입사자', '제출 서류·교육', people) + bundle('매니저', '버디·면담·평가', mgrs) : '<p class="empty">요청할 곳이 없습니다. 모든 준비가 기한 안에 진행되고 있습니다.</p>');
+      return tags(['기한 지남', '2일 내 마감', '받는 곳별 묶음', '줄 클릭: 상세'], 'tab-hint') +
+        (others.length ? teams.map(one).join('') + bundle('입사자', '제출 서류·교육', people) + bundle('매니저', '버디·면담·평가', mgrs) : '<p class="empty">요청할 곳이 없습니다.</p>');
     },
-    soon: () => `<p class="tab-hint">2주 안에 입사하는 사람입니다. 7일 안 입사인데 준비가 덜 된 사람이 맨 위에 옵니다.</p>` +
+    soon: () => tags(['입사 2주 이내', '7일 이내 준비 미완료 우선'], 'tab-hint') +
       (arriving.length ? `<ul class="arrive rows">${arriving.map(({ h, pre, done, k, risk }) => `<li><span class="st st-${risk ? 'bad' : 'wait'}">${k === 0 ? '오늘' : 'D-' + k}</span><div class="t-main"><div class="a-top">${link(h)}<span class="w-meta">${orgName(h.org)} · ${D.md(h.start)}(${D.dow(h.start)}) 입사</span></div>
-        <div class="prog"><div class="bar ${risk ? 'bad' : ''}"><i style="width:${pct(done, pre.length) || 0}%"></i></div><span>준비 ${done}/${pre.length}</span></div></div></li>`).join('')}</ul><a class="more" href="#prep">입사 준비 현황판에서 전체 보기</a>` : '<p class="empty">2주 안에 입사하는 사람이 없습니다.</p>'),
-    watch: () => `<p class="tab-hint">기한 지연, 문제 보고, 낮은 설문 점수, 매니저의 도움 요청 같은 신호가 있는 사람입니다.</p>` +
+        <div class="prog"><div class="bar ${risk ? 'bad' : ''}"><i style="width:${pct(done, pre.length) || 0}%"></i></div><span>준비 ${done}/${pre.length}</span></div></div></li>`).join('')}</ul><a class="more" href="#prep">현황판에서 전체 보기</a>` : '<p class="empty">2주 안에 입사하는 사람이 없습니다.</p>'),
+    watch: () => tags(['기한 지연', '문제 보고', '낮은 설문 점수', '매니저 도움 요청'], 'tab-hint') +
       (watch.length ? `<ul class="watch rows">${watch.map(h => `<li><div class="a-top">${link(h)}<span class="w-meta">${orgName(h.org)} · ${info.get(h.key).stage}</span></div><div>${info.get(h.key).signals.map(s => `<span class="sg sg-${s[0]}">${esc(s[1])}</span>`).join('')}</div></li>`).join('')}</ul>` : '<p class="empty">위험 신호가 있는 입사자가 없습니다.</p>') +
       (pendingResp.length ? `<h3 class="tab-sub">설문 응답 3일 이상 대기 <span class="count">${pendingResp.length}명</span></h3><ul class="plain">${pendingResp.map(x => { const h = hireOf(x.key), s = S.surveys.find(v => v.id === x.survey); return h ? `<li><span>${link(h)} · ${esc(s ? s.name : '')}</span><span>${D.diff(TODAY, x.sentAt)}일째</span></li>` : ''; }).join('')}</ul>` : ''),
   };
@@ -408,7 +410,7 @@ function viewPrep(dv) {
 
   return `
   <header class="page-head">
-    <div><h1>입사 준비 현황판</h1><p class="sub">담당 이름을 누르면 항목별로 펼쳐집니다. 칸을 누르면 완료·메모를 고를 수 있고, 항목 아래 빨간 숫자를 누르면 아직 안 된 사람 명단을 복사합니다.</p></div>
+    <div><h1>입사 준비 현황판</h1>${tags(['담당 클릭: 항목 펼치기', '칸 클릭: 완료·메모', '빨간 숫자: 미완료 명단 복사'], 'sub')}</div>
     <div class="head-act">
       <select data-f="prepScope" aria-label="범위">
         <option value="upcoming" ${UI.prepScope === 'upcoming' ? 'selected' : ''}>입사 30일 전 ~ 입사 첫 주</option>
@@ -446,8 +448,8 @@ function viewHires(dv) {
   const opt = (arr, cur) => arr.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`).join('');
   return `
   <header class="page-head">
-    <div><h1>입사자</h1><p class="sub">${S.hires.length}명 · 채용 시스템 명단을 가져오면 자동으로 추가·변경됩니다</p></div>
-    <div class="head-act"><a class="btn" href="#import/ats">합격자 명단 가져오기</a><button class="btn ghost" data-act="new-hire">한 명 직접 등록</button></div>
+    <div><h1>입사자</h1><p class="sub">${S.hires.length}명 · 채용 시스템(ATS) 가져오기로 자동 갱신</p></div>
+    <div class="head-act"><a class="btn" href="#import/ats">합격자 명단 가져오기</a><button class="btn ghost" data-act="new-hire">직접 등록</button></div>
   </header>
   <div class="filters">
     <input type="search" placeholder="이름, 사번, 이메일, 부서, 매니저" value="${esc(UI.hq)}" data-f="hq" aria-label="검색">
@@ -495,11 +497,11 @@ function viewHire(dv, key) {
         <dl class="kv"><dt>사번</dt><dd>${esc(h.empNo) || '<span class="muted">발급 전 (인사 기본 정보를 가져오면 연결)</span>'}</dd><dt>이메일</dt><dd>${esc(h.email)}</dd>
           <dt>직무</dt><dd>${esc(h.job)}</dd><dt>근무지</dt><dd>${esc(h.site)}</dd><dt>매니저</dt><dd>${esc(h.mgrName)}<span class="small">${esc(h.mgr)}</span></dd>
           <dt>버디</dt><dd>${h.buddy ? esc(h.buddy) : '<span class="muted">지정 전</span>'}</dd></dl></section>
-      <section class="panel"><div class="panel-head"><h2>설문</h2><span class="hint">응답은 HR만 봅니다</span></div>
+      <section class="panel"><div class="panel-head"><h2>설문</h2><span class="hint">응답 열람: HR만</span></div>
         ${sends.length ? sends.map(x => { const s = S.surveys.find(y => y.id === x.survey); const rs = S.resp.filter(r => r.send === x.id); const state = sendState(x);
           return `<div class="sendbox"><div class="sb-head"><b>${esc(s ? s.name : x.survey)}</b><span class="w-meta">${D.md(x.sentAt)} 발송 · ${state === '응답' ? D.md(x.respondedAt) + ' 응답' + (x.via ? ' (' + esc(x.via) + ')' : '') : state}</span></div>
           ${rs.length ? `<ul class="answers">${rs.map(r => { const qq = s && s.qs.find(q => q.q === r.q); const low = (qq && qq.type === '점수5' && r.score <= 2) || r.answer === '예' && qq && qq.type === '예아니오'; return `<li><span>${esc(qq ? qq.text : r.q)}</span><b class="${low ? 'late' : ''}">${r.score !== '' ? r.score + (qq && qq.type === '추천10' ? '/10' : '/5') : esc(r.answer)}</b></li>`; }).join('')}</ul>` : ''}</div>`; }).join('')
-        : '<p class="empty">아직 보낸 설문이 없습니다. 첫 설문은 입사 7일 차에 보냅니다.</p>'}</section>
+        : '<p class="empty">발송 이력 없음 · 첫 설문은 입사 7일 차</p>'}</section>
     </div>
   </div>`;
 }
@@ -515,8 +517,8 @@ function surveyStats(s) {
 }
 function viewSurveys() {
   return `
-  <header class="page-head"><div><h1>설문</h1><p class="sub">입사 n일 차가 되면 보낼 대상이 자동으로 잡힙니다. 응답은 개인별 링크로 바로 모이고, 구글 폼으로 받은 응답 파일도 가져올 수 있습니다.</p></div>
-    <div class="head-act"><a class="btn" href="#import/survey">구글 폼 응답 가져오기</a><button class="btn primary" data-act="new-survey">새 설문 만들기</button></div></header>
+  <header class="page-head"><div><h1>설문</h1>${tags(['입사 n일 차 대상 자동 선정', 'Google 폼 연동', '응답 가져오기'], 'sub')}</div>
+    <div class="head-act"><a class="btn" href="#import/survey">응답 파일 가져오기</a><button class="btn primary" data-act="new-survey">새 설문</button></div></header>
   <section class="panel flush"><div class="scroll"><table class="tbl">
     <thead><tr><th>설문</th><th>받는 사람</th><th>보내는 때</th><th class="num">발송 대기</th><th class="num">보낸 수</th><th class="num">응답률</th><th class="num">평균 (5점)</th><th></th></tr></thead>
     <tbody>${S.surveys.map(s => { const x = surveyStats(s), w = sendTargets(s).length; return `<tr class="click ${s.active ? '' : 'off'}" data-href="#survey/${s.id}">
@@ -524,7 +526,7 @@ function viewSurveys() {
       <td class="num ${w ? 'warn-t' : ''}">${w || '-'}</td><td class="num">${x.sends.length}</td><td class="num">${x.sends.length ? pct(x.answered, x.sends.length) + '%' : '-'}</td>
       <td class="num">${x.avg === null ? '-' : x.avg.toFixed(1)}</td><td>${w && s.active ? `<a class="btn sm primary" href="#survey/${s.id}">발송하기</a>` : ''}</td></tr>`; }).join('')}</tbody>
   </table></div></section>
-  <p class="hint">응답률 = 응답 수 ÷ 보낸 수. 보낸 지 ${SURVEY_WINDOW}일이 지나도 답이 없으면 미응답으로 봅니다.</p>`;
+  ${tags(['응답률 = 응답 ÷ 발송', `발송 ${SURVEY_WINDOW}일 경과 시 미응답`])}`;
 }
 
 function viewSurvey(dv, id, tab) {
@@ -546,12 +548,12 @@ function surveySend(s) {
   return `
   ${formPanel(s)}
   <section class="panel">
-    <div class="panel-head"><h2>보낼 대상</h2><span class="hint">입사 ${s.day}일 차가 지났고 아직 안 보낸 사람</span></div>
-    ${targets.length ? `<form id="send-form"><table class="tbl compact"><thead><tr><th class="cb"><input type="checkbox" checked data-act="check-all" aria-label="모두 선택"></th><th>입사자</th><th>받는 사람</th><th>입사일</th><th>${s.day}일 차</th></tr></thead><tbody>
+    <div class="panel-head"><h2>보낼 대상</h2><span class="hint">입사 ${s.day}일 차 경과 · 미발송</span></div>
+    ${targets.length ? `<form id="send-form"><div class="scroll"><table class="tbl compact one-line"><thead><tr><th class="cb"><input type="checkbox" checked data-act="check-all" aria-label="모두 선택"></th><th>입사자</th><th>받는 사람</th><th>입사일</th><th>${s.day}일 차</th></tr></thead><tbody>
       ${targets.map(h => `<tr><td class="cb"><input type="checkbox" name="k" value="${esc(h.key)}" checked aria-label="${esc(h.name)}"></td><td>${link(h)}<span class="small">${orgName(h.org)}</span></td><td>${s.audience === '매니저' ? esc(h.mgrName) + ' 매니저<span class="small">' + esc(h.mgr) + '</span>' : esc(h.email)}</td><td>${D.md(h.start)}</td><td>${D.md(D.add(h.start, s.day))}</td></tr>`).join('')}
-    </tbody></table><div class="row-act"><button class="btn primary" data-act="send">선택한 사람에게 보내기</button></div></form>
-    <p class="hint">보내기를 누르면 사람마다 ${s.form && s.form.url ? '이메일이 미리 채워진 Google 폼 링크' : '응답 링크'}가 만들어집니다. Gmail이 연결되어 있으면 한 사람에 한 통씩 바로 보내고, 아니면 안내 문구와 링크 목록을 복사해 보낼 수 있습니다.</p>`
-    : '<p class="empty">지금 보낼 사람이 없습니다. 입사 ' + s.day + '일 차가 되면 여기에 나타납니다.</p>'}
+    </tbody></table></div><div class="row-act"><button class="btn primary" data-act="send">선택 대상 보내기</button></div></form>
+    ${tags([s.form && s.form.url ? '사람별 Google 폼 링크 (이메일 자동 입력)' : '사람별 응답 링크', 'Gmail 연동: 1인 1통 바로 발송', '미연동: 복사 후 발송'])}`
+    : '<p class="empty">보낼 대상 없음 · 입사 ' + s.day + '일 차에 표시</p>'}
   </section>
   <section class="panel">
     <div class="panel-head"><h2>응답 기다리는 중</h2><span class="count">${waiting.length}명</span>${waiting.length ? '<button class="btn sm" data-act="remind" data-s="' + s.id + '">독촉 문구 복사</button>' : ''}</div>
@@ -565,7 +567,7 @@ function surveyResult(s) {
   const missed = x.sends.filter(y => sendState(y) === '미응답').length;
   const low = [...new Set(rs.filter(r => { const q = s.qs.find(qq => qq.q === r.q); return q && ((q.type === '점수5' && r.score <= 2) || (q.type === '예아니오' && r.answer === '예')); }).map(r => r.key))];
   return `
-  ${s.form && (s.form.api || s.form.sheet) ? `<section class="panel form-bar"><div><b>${s.form.api ? 'Google 폼 응답 가져오기' : '응답 시트에서 가져오기'}</b><span class="w-meta">${s.form.api ? 'Google 폼에 들어온 응답을 바로 읽어' : 'Google 폼 응답이 쌓인 시트를 읽어'} 결과에 반영합니다. 이미 가져온 응답은 건너뜁니다.</span></div><div class="row-act"><button class="btn primary" data-act="form-pull" data-s="${s.id}">지금 가져오기</button></div></section>` : s.form && s.form.url ? '' : `<p class="hint form-hint">Google 폼을 연결하면 여기서 응답 시트를 바로 가져올 수 있습니다. <a href="#survey/${s.id}/send">보내기 탭에서 연결</a></p>`}
+  ${s.form && (s.form.api || s.form.sheet) ? `<section class="panel form-bar"><div><b>${s.form.api ? 'Google 폼 응답 가져오기' : '응답 시트에서 가져오기'}</b><span class="w-meta">${s.form.api ? 'Google 폼 응답 직접 읽기' : '응답 시트 읽기'} · 이미 가져온 응답 제외</span></div><div class="row-act"><button class="btn primary" data-act="form-pull" data-s="${s.id}">지금 가져오기</button></div></section>` : s.form && s.form.url ? '' : tags(['Google 폼 미연동', `<a href="#survey/${s.id}/edit">문항 만들기에서 폼 생성</a>`], 'form-hint')}
   <div class="kpis kpis-4">
     <div class="kpi"><span class="k-label">보낸 수</span><span class="k-val">${x.sends.length}</span></div>
     <div class="kpi"><span class="k-label">응답</span><span class="k-val">${x.answered}</span><span class="k-note">미응답 ${missed} · 대기 ${x.waiting.length}</span></div>
@@ -606,7 +608,7 @@ function surveyEdit(s) {
     <ol class="qedit">${s.qs.map((q, i) => `<li><input name="qt" value="${esc(q.text)}" aria-label="${i + 1}번 문항" required><select name="qy" aria-label="${i + 1}번 응답 방식">${T.map(t => `<option value="${t}" ${t === q.type ? 'selected' : ''}>${TL[t]}</option>`).join('')}</select><input type="hidden" name="qq" value="${esc(q.q)}">
       <button type="button" class="btn sm ghost" data-act="q-up" data-i="${i}" ${i ? '' : 'disabled'} aria-label="위로">↑</button><button type="button" class="btn sm ghost" data-act="q-del" data-i="${i}" aria-label="삭제">삭제</button></li>`).join('')}</ol>
     <div class="row-act"><button type="button" class="btn" data-act="q-add">문항 추가</button><span class="grow"></span><button class="btn primary" data-act="survey-save">저장</button></div>
-    ${used ? '<p class="hint">이미 보낸 설문입니다. 문항을 바꾸면 앞으로 보내는 사람부터 바뀐 문항을 받습니다. 기존 응답은 그대로 남습니다.</p>' : ''}
+    ${used ? tags(['발송 이력 있음', '수정 문항: 이후 발송부터', '기존 응답 유지']) : ''}
   </form>`;
 }
 function readSurveyForm(s) {
@@ -689,7 +691,7 @@ function viewImport(dv, src) {
     return `<a class="src ${k === src ? 'on' : ''}" href="#import/${k}"><b>${m.name}</b><span class="w-meta">${esc(m.short)} · ${at ? D.md(at) + ' 가져옴' : '가져온 적 없음'}${CONN.sources[k] ? ' · 연동됨' : ''}</span></a>`; }).join('');
   return `
   ${setupHead('import')}
-  <header class="page-head"><div><p class="sub">엑셀 업로드 또는 시트·API 연동 · 열 이름이 달라도 자동 매칭</p></div></header>
+  <header class="page-head"><div>${tags(['엑셀 업로드', '시트·API 연동', '열 이름 자동 매칭'], 'sub')}</div></header>
   <div class="import-grid">
     <nav class="srcs" aria-label="가져올 데이터">${cards}</nav>
     <section class="panel">${src ? importPanel(src) : `<p class="empty">왼쪽에서 데이터를 선택하세요.</p>`}</section>
@@ -948,7 +950,7 @@ function viewSettings() {
   const owners = [...new Set(S.template.map(t => t.owner))];
   return `
   ${setupHead('settings')}
-  <header class="page-head"><div><p class="sub">입사자가 추가되면 이 목록대로 할 일과 기한이 만들어집니다. 바꾼 내용은 앞으로 추가되는 입사자부터 적용됩니다.</p></div>
+  <header class="page-head"><div>${tags(['입사자 추가 시 할 일·기한 자동 생성', '변경: 이후 입사자부터 적용'], 'sub')}</div>
     <div class="head-act"><button class="btn primary" data-act="tpl-edit" data-i="-1">항목 추가</button></div></header>
   <div class="filters">
     <input type="search" placeholder="항목 이름, 코드, 방식, 대상" value="${esc(UI.tq)}" data-f="tq" aria-label="체크리스트 검색">
@@ -964,10 +966,10 @@ function viewSettings() {
   <div class="home-grid two">
     <section class="panel"><div class="panel-head"><h2>규정</h2></div>
       <label class="fld inline"><span>수습 기간</span><select data-act="probation">${[0, 1, 2, 3, 6].map(m => `<option value="${m}" ${m === S.settings.probationMonths ? 'selected' : ''}>${m ? m + '개월' : '없음'}</option>`).join('')}</select></label>
-      <p class="hint">수습 평가 기한은 수습 종료 5일 전으로 잡힙니다.</p></section>
+      <p class="hint">수습 평가 기한: 수습 종료 5일 전</p></section>
     <section class="panel"><div class="panel-head"><h2>내보내기·초기화</h2></div>
       <div class="row-act"><button class="btn" data-act="export" data-v="hires">입사자 엑셀</button><button class="btn" data-act="export" data-v="tasks">할 일 엑셀</button><button class="btn" data-act="export" data-v="resp">설문 응답 엑셀</button></div>
-      <p class="hint">이 데모의 데이터는 이 브라우저에만 저장됩니다.</p>
+      <p class="hint">데이터 저장: 이 브라우저만</p>
       <div class="row-act"><button class="btn ghost danger" data-act="reset">예시 데이터로 되돌리기</button></div></section>
   </div>`;
 }
@@ -994,7 +996,7 @@ function actNewHire() {
 }
 function actEditHire(key) {
   const h = hireOf(key);
-  modal('정보 수정', hireForm(h) + '<p class="m-note">입사일을 바꾸면 끝나지 않은 할 일의 기한이 다시 계산됩니다.</p>', fd => {
+  modal('정보 수정', hireForm(h) + '<p class="m-note">입사일 변경 시 남은 할 일 기한 재계산</p>', fd => {
     const v = Object.fromEntries(fd.entries());
     const moved = v.start && v.start !== h.start;
     Object.assign(h, v);
@@ -1005,7 +1007,7 @@ function actEditHire(key) {
 }
 function actLeave(key) {
   const h = hireOf(key);
-  modal(esc(h.name) + ' 님 퇴사·입사 취소', field('kind', '구분', D.diff(TODAY, h.start) < 0 ? '입사 취소' : '퇴사', 'select', [['퇴사', '퇴사'], ['입사 취소', '입사 취소 (입사 전 포기)']]) + field('at', '날짜', TODAY, 'date') + field('note', '사유 (선택)', '') + '<p class="m-note">남은 할 일이 모두 종료됩니다.</p>', fd => {
+  modal(esc(h.name) + ' 님 퇴사·입사 취소', field('kind', '구분', D.diff(TODAY, h.start) < 0 ? '입사 취소' : '퇴사', 'select', [['퇴사', '퇴사'], ['입사 취소', '입사 취소 (입사 전 포기)']]) + field('at', '날짜', TODAY, 'date') + field('note', '사유 (선택)', '') + '<p class="m-note">남은 할 일 모두 종료</p>', fd => {
     if (fd.get('kind') === '입사 취소') h.status = '입사 취소'; else h.leave = fd.get('at');
     h.note = fd.get('note');
     S.tasks.filter(t => t.key === key && !t.done).forEach(t => { t.closed = fd.get('kind'); });
@@ -1014,7 +1016,7 @@ function actLeave(key) {
 }
 function actMemo(id) {
   const t = S.tasks.find(x => x.id === id), h = hireOf(t.key);
-  modal('메모 · ' + esc(t.title), `<p class="m-note" style="margin:0 0 10px">${esc(h.name)} · ${D.md(t.due)}까지. 메모가 있으면 '문제'로 표시되고, 비우면 해결로 처리됩니다.</p><label class="fld"><span>메모</span><textarea name="memo" rows="3">${esc(t.memo)}</textarea></label>`, fd => {
+  modal('메모 · ' + esc(t.title), `<p class="m-note" style="margin:0 0 10px">${esc(h.name)} · ${D.md(t.due)}까지 · 메모 입력: 문제(?) 표시 · 비우면 해결</p><label class="fld"><span>메모</span><textarea name="memo" rows="3">${esc(t.memo)}</textarea></label>`, fd => {
     const m = String(fd.get('memo') || '').trim();
     t.memo = memoValue(t, m);
     save(); toast(m ? '메모를 남겼습니다.' : '해결로 처리했습니다.');
@@ -1045,12 +1047,12 @@ function actSend(sid) {
     ? `[온보딩] ${s.name} 부탁드립니다\n\n매니저님, 안녕하세요. 온보딩 담당 HR입니다.\n팀에 새로 오신 {이름} 님이 입사 ${s.day}일을 맞았습니다. 1분이면 끝나는 체크인에 답해 주세요.\n응답은 HR만 보며, 필요한 경우 HR이 먼저 연락드립니다.\n\n{링크}`
     : `[온보딩] 입사 ${s.day}일, 잘 지내고 계신가요?\n\n{이름} 님, 안녕하세요. 온보딩 담당 HR입니다.\n입사 ${s.day}일을 맞아 짧은 설문(2분)을 부탁드립니다.\n응답은 HR만 보며 매니저에게 개별 공개하지 않습니다.\n\n{링크}`;
   const n = drafts.length, gmail = !!CONN.google.clientId;
-  modal(`${n}명에게 보내기`, `<p class="m-note" style="margin:0 0 8px">${s.form && s.form.url ? '링크는 사람마다 이메일이 미리 채워진 Google 폼입니다. 응답은 Google 시트에 모이고, 결과 탭의 "응답 시트에서 가져오기"로 반영합니다.' : '지금은 데모용 응답 페이지 링크입니다. 실제로 응답을 받으려면 보내기 탭 위쪽에서 Google 폼을 연결하세요.'}</p>
+  modal(`${n}명에게 보내기`, `<p class="m-note" style="margin:0 0 8px">${s.form && s.form.url ? '사람별 Google 폼 링크 (이메일 자동 입력) · 응답: 결과 탭에서 가져오기' : '데모용 응답 링크 · 실제 수집: 보내기 탭에서 Google 폼 연동'}</p>
     <label class="fld"><span>안내 문구 <span class="hint">({이름}, {링크}는 사람마다 바뀌어 들어갑니다)</span></span><textarea rows="7" id="mail-text">${esc(mail)}</textarea></label>
     <table class="tbl compact"><thead><tr><th>입사자</th><th>받는 사람</th><th>개인 링크</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.h.name)}</td><td>${esc(r.to)}</td><td><a href="${esc(r.url)}" target="_blank" rel="noopener">링크 열기</a></td></tr>`).join('')}</tbody></table>
-    ${gmail ? '' : `<div class="send-manual"><b>Gmail이 연결되어 있지 않아 직접 보내야 합니다.</b><ol><li>아래 두 복사 버튼으로 문구와 받는 사람·링크 목록을 복사해 메일을 보냅니다.</li><li>보낸 뒤 <b>보냈다고 표시</b>를 누르면 "응답 기다리는 중"으로 옮겨집니다.</li></ol><span class="hint"><a href="#connect">설정 → 연결</a>에서 Gmail을 연결하면 여기서 바로 보낼 수 있습니다.</span></div>`}
+    ${gmail ? '' : `<div class="send-manual"><b>Gmail 미연동 · 직접 발송</b><ol><li>문구·목록 복사 → 메일 발송</li><li>발송 후 <b>보냈다고 표시</b> → 응답 대기로 이동</li></ol><span class="hint"><a href="#connect">설정 → 연결</a>에서 Gmail 연동 시 바로 발송</span></div>`}
     <div class="row-act"><button type="button" class="btn" id="copy-mail">안내 문구 복사</button><button type="button" class="btn" id="copy-links">받는 사람·링크 목록 복사 (엑셀 붙여넣기용)</button></div>
-    <p class="m-note">보내지 않고 닫으면 아무것도 기록되지 않고, 보낼 대상에 그대로 남습니다.</p>`,
+    <p class="m-note">닫기: 기록 없음 · 보낼 대상 유지</p>`,
     () => {
       const btn = $('#modal .btn.primary');
       if (!gmail) {
