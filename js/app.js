@@ -9,6 +9,7 @@ function load() {
 }
 /* 공휴일 달력이 생기기 전에 저장된 데이터: 주말·공휴일 입사일을 다음 근무일로 옮기고 기한을 다시 계산한다 (한 번만) */
 function toWorkdays(s) {
+  if (s.lastImport && !('dept' in s.lastImport)) { s.lastImport.dept = D.add(TODAY, -1); try { localStorage.setItem(STORE_KEY, JSON.stringify(s)); } catch (e) { /* 저장 불가 */ } }
   if (s.workdays) return s;
   s.hires.forEach(h => { if (h.start && !D.isWorkday(h.start)) h.start = D.nextWork(h.start); });
   s.tasks.forEach(t => { const h = s.hires.find(x => x.key === t.key); if (h && t.offset !== undefined) t.due = dueOf(t, h, s.settings || { probationMonths: 3 }); });
@@ -134,6 +135,7 @@ window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render(); }
 
 /* ═════════ 오늘 할 일 ═════════ */
 const SOURCES_META = {
+  dept: { name: 'IT·총무 요청 현황', from: 'IT 시스템·공유 시트', cadence: 2 },
   ats: { name: '채용 합격자 명단', from: '채용 시스템', cadence: 7 },
   hris: { name: '인사 기본 정보', from: '인사 시스템', cadence: 7 },
   lms: { name: '교육 수료 현황', from: 'LMS', cadence: 7 },
@@ -655,7 +657,25 @@ const SOURCES = {
     does: '응답을 입사자에게 연결하고 결과에 반영',
     fields: [['email', '이메일', 1, ['이메일 주소', '이메일', 'email']], ['at', '제출 시각', 0, ['타임스탬프', 'timestamp', '제출 시각', '제출 시간', '완료 시간']], ['hire', '입사자 이름 (매니저 설문)', 0, ['입사자 이름', '입사자', '대상자']]] },
 };
+SOURCES.dept = { name: 'IT·총무 요청 현황', from: 'IT 요청 시스템(헬프데스크) API, 또는 IT·총무와 같이 쓰는 공유 Google 시트', who: 'IT·총무 담당 (처리 기록)', when: '수시 · 연결해 두면 "지금 가져오기" 한 번', match: '할 일 ID, 없으면 입사자 이메일 + 요청 종류',
+  does: '처리 완료된 요청을 현황판에서 완료(✓)로 표시, 보류 사유는 메모(?)로',
+  fields: [['email', '입사자 이메일', 1, ['입사자 이메일', '대상자 이메일', '이메일', 'u_new_hire_email', 'requested_for.email', 'fields.requester.emailAddress', 'email']],
+    ['item', '요청 종류', 1, ['요청 종류', '요청 유형', '항목', '카테고리', 'u_category', 'category', 'fields.issuetype.name', 'short_description', 'fields.summary', 'summary']],
+    ['status', '상태', 1, ['상태', '처리 상태', 'state', 'status', 'fields.status.name', 'status.name']],
+    ['at', '처리일', 0, ['처리일', '완료일', 'closed_at', 'resolved_at', 'fields.resolutiondate', 'resolutiondate']],
+    ['id', '할 일 ID', 0, ['할 일 ID', 'task id', 'onboarding_task_id']],
+    ['ticket', '요청 번호', 0, ['요청 번호', '티켓 번호', 'number', 'key', 'ticket']],
+    ['memo', '메모', 0, ['메모', '비고', '사유', 'comments', 'comment', 'fields.comment']]] };
 let IMP = null; // { src, file, head, rows, map, surveyId, plan }
+
+/* 요청 종류 글자로 어느 준비 항목인지 찾는다 */
+const DEPT_KEYS = [[/노트북|pc|컴퓨터|장비|모니터|laptop/i, 'IT-PC'], [/계정|메일|메신저|\bad\b|sso|아이디|account/i, 'IT-AC'], [/자리|좌석|책상|seat/i, 'GA-DS'], [/출입|사원증|badge/i, 'GA-ID'], [/명함|card/i, 'GA-NC']];
+function deptTask(h, item) {
+  const mine = S.tasks.filter(t => t.key === h.key && DEPT_OWNERS.includes(t.owner) && !t.closed);
+  const k = DEPT_KEYS.find(([re]) => re.test(item));
+  return (k && mine.find(t => t.code === k[1])) || mine.find(t => item.includes(shortTitle(t.title)) || shortTitle(t.title).includes(item));
+}
+const deptDone = s => { const x = String(s).trim().toLowerCase(); if (!x || /미완료|미처리|처리 ?중|진행|대기|보류|취소|pending|progress|open|^false$|^n$/.test(x)) return false; return /완료|처리|해결|종료|done|resolved|closed|complete|^true$|^y$|^yes$|^o$|✓|✔|☑/.test(x); };
 
 /* 설정: 데이터 가져오기 · 연결 · 체크리스트를 한 메뉴 아래 탭으로 */
 const SETUP_TABS = [['import', '데이터 가져오기'], ['connect', '연결'], ['settings', '체크리스트']];
@@ -688,7 +708,7 @@ function importPanel(src) {
   <ol class="steps"><li class="${step >= 1 ? 'on' : ''}">파일 올리기</li><li class="${step >= 2 ? 'on' : ''}">열 맞추기</li><li class="${step >= 3 ? 'on' : ''}">바뀌는 내용 확인</li></ol>
   ${src === 'survey' ? `<label class="fld inline"><span>어느 설문의 응답인가요?</span><select data-act="imp-survey">${S.surveys.map(s => `<option value="${s.id}" ${s.id === IMP.surveyId ? 'selected' : ''}>${esc(s.name)} (${s.audience})</option>`).join('')}</select></label>` : ''}
   ${step === 1 ? `
-    ${apiPanel(src)}
+    ${apiPanel(src)}${src === 'dept' ? deptPanel() : ''}
     <p class="drop-req">꼭 있어야 하는 열 ${SOURCES[src].fields.filter(f => f[2]).map(f => `<i>${esc(f[1])}</i>`).join('')}<span>열 이름이 달라도 다음 단계에서 맞출 수 있습니다.</span></p>
     <label class="drop" id="drop" for="imp-file">
       <input type="file" id="imp-file" class="sr" accept=".xlsx,.xls,.csv,.tsv,.txt">
@@ -742,6 +762,8 @@ function planStep(src) {
     ${sec('정보 갱신', p.update || [], x => `<li>${esc(x.h.name)} · ${esc(x.what)}</li>`)}
     ${sec('교육 수료 반영', p.done || [], x => `<li>${esc(x.h.name)} · ${esc(COURSES[x.t.link] || x.t.link)} · ${D.md(x.at)} 수료</li>`, 'add')}
     ${sec('설문 응답 반영', p.answers || [], x => `<li>${esc(x.h.name)} · ${D.md(x.at)} 응답</li>`, 'add')}
+    ${sec('IT·총무 처리 완료', p.deptDone || [], x => `<li>${esc(x.h.name)} · ${esc(shortTitle(x.t.title))} · ${D.md(x.at)} 처리${x.ticket ? ` <span class="muted">${esc(x.ticket)}</span>` : ''}</li>`, 'add')}
+    ${sec('보류·사유 (메모로 남김)', p.deptMemo || [], x => `<li>${esc(x.h.name)} · ${esc(shortTitle(x.t.title))} · ${esc(x.memo)} <span class="muted">${esc(x.status)}</span></li>`, 'chg')}
     ${sec('건너뜀', p.skip || [], x => `<li>${esc(x.row)} <span class="muted">${esc(x.why)}</span></li>`, 'skip')}
     ${p.same ? `<p class="hint">바뀐 것이 없는 줄 ${p.same}건</p>` : ''}
     <div class="row-act"><button class="btn ghost" data-act="imp-back">열 다시 맞추기</button><span class="grow"></span><button class="btn primary" data-act="imp-apply" ${p.count ? '' : 'disabled'}>반영하기 (${p.count}건)</button></div>`;
@@ -799,7 +821,7 @@ function makePlan() {
   const src = IMP.src, fields = SOURCES[src].fields;
   const miss = fields.filter(f => f[2] && (IMP.map[f[0]] === undefined || IMP.map[f[0]] === '')).map(f => f[1]);
   if (miss.length) { toast('필수 항목의 열을 골라 주세요: ' + miss.join(', ')); return; }
-  const p = { add: [], moved: [], cancel: [], emp: [], leave: [], update: [], done: [], answers: [], skip: [], same: 0 };
+  const p = { add: [], moved: [], cancel: [], emp: [], leave: [], update: [], done: [], answers: [], deptDone: [], deptMemo: [], skip: [], same: 0 };
   const rowLabel = r => r.filter(c => str(c)).slice(0, 3).map(str).join(' / ');
   IMP.rows.forEach(row => {
     if (src === 'ats') {
@@ -836,6 +858,20 @@ function makePlan() {
       if (!t) return p.skip.push({ row: h.name + ' / ' + course, why: '온보딩 교육 과정이 아님' });
       if (t.done || t.closed) { p.same++; return; }
       p.done.push({ h, t, at: D.parse(val(row, 'doneAt')) || TODAY });
+    } else if (src === 'dept') {
+      const id = str(val(row, 'id')), email = str(val(row, 'email')).toLowerCase(), item = str(val(row, 'item')), status = str(val(row, 'status')), memo = str(val(row, 'memo')), ticket = str(val(row, 'ticket'));
+      let t = id ? S.tasks.find(x => x.id === id) : null;
+      if (!t) {
+        const h = S.hires.find(x => x.email.toLowerCase() === email);
+        if (!h) return p.skip.push({ row: email || rowLabel(row), why: '입사자 이메일이 명단에 없음' });
+        t = deptTask(h, item);
+        if (!t) return p.skip.push({ row: h.name + ' / ' + item, why: '어느 준비 항목인지 알 수 없음 (요청 종류 확인)' });
+      }
+      const h = hireOf(t.key);
+      if (t.closed) { p.same++; return; }
+      if (deptDone(status)) { if (t.done) { p.same++; return; } p.deptDone.push({ h, t, at: D.parse(val(row, 'at')) || TODAY, ticket }); }
+      else if (memo && !t.done && !String(t.memo || '').includes(memo)) p.deptMemo.push({ h, t, memo, status });
+      else p.same++;
     } else if (src === 'survey') {
       const s = S.surveys.find(x => x.id === IMP.surveyId);
       const email = str(val(row, 'email')).toLowerCase();
@@ -851,7 +887,7 @@ function makePlan() {
       p.answers.push({ h, x, at, ans, s });
     }
   });
-  p.count = p.add.length + p.moved.length + p.cancel.length + p.emp.length + p.leave.length + p.update.length + p.done.length + p.answers.length;
+  p.count = p.add.length + p.moved.length + p.cancel.length + p.emp.length + p.leave.length + p.update.length + p.done.length + p.answers.length + p.deptDone.length + p.deptMemo.length;
   IMP.plan = p;
   render();
 }
@@ -874,12 +910,15 @@ function applyPlan() {
   p.leave.forEach(({ h, leave }) => { h.leave = leave; h.note = '인사 시스템 퇴직 처리'; S.tasks.filter(t => t.key === h.key && !t.done).forEach(t => { t.closed = '퇴사'; }); });
   p.update.forEach(({ h, rec, keys }) => keys.forEach(k => { h[k] = rec[k]; if (k === 'mgr') { const m = Object.values(MANAGERS).find(x => x[1] === rec.mgr); h.mgrName = m ? m[0] : rec.mgr.split('@')[0]; } }));
   p.done.forEach(({ t, at }) => { t.done = at; t.by = 'LMS 가져오기'; });
+  const deptBy = /시트/.test(IMP.file || '') ? '공유 시트' : 'IT 시스템';
+  (p.deptDone || []).forEach(({ t, at, ticket }) => { t.done = at; t.by = deptBy + (ticket ? ' ' + ticket : ''); t.memo = ''; });
+  (p.deptMemo || []).forEach(({ t, memo }) => { t.memo = D.md(TODAY) + ' ' + t.owner + ': ' + memo; });
   p.answers.forEach(({ h, x, at, ans, s }) => {
     if (!x) { x = { id: 'SND-' + (S.sends.length + 1) + '-' + Date.now().toString(36), survey: s.id, key: h.key, sentAt: at, token: Math.random().toString(36).slice(2), respondedAt: '', via: '' }; S.sends.push(x); }
     x.respondedAt = at; x.via = '구글 폼 가져오기';
     ans.forEach(a => S.resp.push(Object.assign({ send: x.id, survey: s.id, key: h.key, at }, a)));
   });
-  const parts = [[p.add, '새 입사자'], [p.moved, '입사일 변경'], [p.cancel, '입사 포기'], [p.emp, '사번 연결'], [p.leave, '퇴직'], [p.update, '정보 갱신'], [p.done, '수료 반영'], [p.answers, '응답 반영']].filter(x => x[0].length).map(x => x[1] + ' ' + x[0].length);
+  const parts = [[p.add, '새 입사자'], [p.moved, '입사일 변경'], [p.cancel, '입사 포기'], [p.emp, '사번 연결'], [p.leave, '퇴직'], [p.update, '정보 갱신'], [p.done, '수료 반영'], [p.answers, '응답 반영'], [p.deptDone || [], '처리 완료'], [p.deptMemo || [], '보류 메모']].filter(x => x[0].length).map(x => x[1] + ' ' + x[0].length);
   S.lastImport[src] = TODAY;
   S.imports.push({ at: TODAY, source: src, file: IMP.file, summary: parts.join(', ') || '변경 없음' });
   const msg = parts.join(', ') + ' 반영했습니다.';
@@ -890,8 +929,8 @@ function applyPlan() {
 
 function downloadSample(src) {
   const today = TODAY;
-  const grid = src === 'ats' ? sampleATS(S, today) : src === 'hris' ? sampleHRIS(S, today) : src === 'lms' ? sampleLMS(S) : sampleSurvey(S, IMP.surveyId);
-  const name = { ats: '채용시스템_합격자명단', hris: '인사시스템_인사기본정보', lms: 'LMS_수료현황', survey: '구글폼_응답_' + (S.surveys.find(s => s.id === (IMP && IMP.surveyId)) || {}).name }[src] + '_' + today;
+  const grid = src === 'ats' ? sampleATS(S, today) : src === 'hris' ? sampleHRIS(S, today) : src === 'lms' ? sampleLMS(S) : src === 'dept' ? sampleDept(S, today) : src === 'dept-form' ? [DEPT_HEAD, ...deptRows(S, today)] : sampleSurvey(S, IMP.surveyId);
+  const name = { ats: '채용시스템_합격자명단', hris: '인사시스템_인사기본정보', lms: 'LMS_수료현황', dept: '부서공유시트_처리현황_예시', 'dept-form': '입사준비요청_IT총무공유', survey: '구글폼_응답_' + (S.surveys.find(s => s.id === (IMP && IMP.surveyId)) || {}).name }[src] + '_' + today;
   if (window.XLSX) {
     const ws = XLSX.utils.aoa_to_sheet(grid); ws['!cols'] = grid[0].map(() => ({ wch: 16 }));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Sheet1'); XLSX.writeFile(wb, name + '.xlsx');

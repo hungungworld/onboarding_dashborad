@@ -238,9 +238,10 @@ function buildDemo(today) {
     });
   });
 
-  const lastImport = { ats: D.add(today, -3), hris: D.add(today, -6), lms: D.add(today, -9), survey: '' };
+  const lastImport = { ats: D.add(today, -3), hris: D.add(today, -6), lms: D.add(today, -9), survey: '', dept: D.add(today, -1) };
   const imports = [
     { at: lastImport.lms, source: 'lms', file: 'LMS_이수현황.xlsx', summary: '수료 반영 14건' },
+    { at: lastImport.dept, source: 'dept', file: 'IT 시스템 API', summary: '처리 완료 6, 보류 메모 2' },
     { at: lastImport.hris, source: 'hris', file: '인사기본정보.xlsx', summary: '사번 연결 3명' },
     { at: lastImport.ats, source: 'ats', file: '합격자명단.xlsx', summary: '새 입사자 2명, 입사일 변경 1명' },
   ];
@@ -293,4 +294,42 @@ function sampleSurvey(S, surveyId) {
       ...s.qs.map(q => q.type === '점수5' ? 3 + (i % 3) : q.type === '추천10' ? 7 + (i % 4) : q.type === '예아니오' ? '아니오' : (i % 2 ? '' : '안내가 친절했습니다'))];
   });
   return [head, ...rows];
+}
+
+/* ───────── IT·총무 요청 현황 ─────────
+   부서가 처리한 기록(IT 요청 시스템 또는 부서 공유 시트)을 읽어 준비 항목을 완료로 바꾼다. */
+const DEPT_OWNERS = ['IT', '총무'];
+const DEPT_HEAD = ['할 일 ID', '입사자', '입사자 이메일', '입사일', '부서', '요청 종류', '담당', '기한', '상태', '처리일', '메모'];
+const DEPT_STATES = ['대기', '진행 중', '완료', '보류'];
+/* 공유 시트에 올릴 줄: 재직 중이고 아직 닫히지 않은 IT·총무 할 일 (입사 30일 전 ~ 입사 2주 뒤) */
+function deptRows(S, today) {
+  return S.tasks.filter(t => DEPT_OWNERS.includes(t.owner) && !t.closed).map(t => [t, S.hires.find(h => h.key === t.key)])
+    .filter(([t, h]) => h && h.status !== '입사 취소' && !h.leave && D.diff(h.start, today) <= 30 && D.diff(today, h.start) <= 14)
+    .sort((a, b) => D.n(a[0].due) - D.n(b[0].due))
+    .map(([t, h]) => [t.id, h.name, h.email, h.start, orgNameOf(h.org), t.title, t.owner, t.due, t.done ? '완료' : '대기', t.done || '', t.memo || '']);
+}
+/* 샘플: 공유 시트를 IT·총무가 일부 체크한 모습 */
+function sampleDept(S, today) {
+  const rows = deptRows(S, today).map((r, i) => {
+    if (r[8] === '완료') return r;
+    const k = i % 5;
+    if (k === 0 || k === 2) { r[8] = '완료'; r[9] = D.add(today, -1); }
+    else if (k === 3) { r[8] = '보류'; r[10] = r[6] === 'IT' ? '노트북 재고 부족, 다음 주 수요일 입고 예정' : '출입증 발급은 보안교육 이수 후 가능'; }
+    else r[8] = '진행 중';
+    return r;
+  });
+  return [DEPT_HEAD, ...rows];
+}
+/* 샘플 IT 요청 시스템 API 응답 (ServiceNow 모양) */
+function sampleITApi(S, today) {
+  const cat = t => /노트북/.test(t.title) ? '노트북·장비' : /계정/.test(t.title) ? '계정 생성' : /자리/.test(t.title) ? '자리 배정' : /출입증/.test(t.title) ? '출입증' : /명함/.test(t.title) ? '명함' : t.title;
+  let n = 12040;
+  const result = deptRows(S, today).map((r, i) => {
+    const t = S.tasks.find(x => x.id === r[0]);
+    const done = r[8] === '완료' || i % 3 === 0;
+    return { number: 'RITM00' + (n++), short_description: `[신규 입사] ${r[1]} ${cat(t)}`, u_category: cat(t), u_new_hire_email: r[2], assignment_group: { name: r[6] === 'IT' ? 'IT 헬프데스크' : '총무팀' },
+      state: done ? 'Closed Complete' : i % 3 === 1 ? 'Work in Progress' : 'Pending', closed_at: done ? (t.done || D.add(today, -1)) : '',
+      comments: !done && i % 3 === 2 ? '부품 입고 대기' : '' };
+  });
+  return { result };
 }

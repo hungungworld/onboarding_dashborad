@@ -13,7 +13,7 @@ CONN.sources = CONN.sources || {};   // { ats: { kind: 'sheet'|'api', url, heade
 function saveConn() { try { localStorage.setItem(CONN_KEY, JSON.stringify(CONN)); } catch (e) { /* 저장 불가 */ } }
 
 /* ───────── Google 로그인 (Google Identity Services, 무료) ───────── */
-const G_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/forms.body https://www.googleapis.com/auth/forms.responses.readonly';
+const G_SCOPES = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/forms.body https://www.googleapis.com/auth/forms.responses.readonly https://www.googleapis.com/auth/drive.file';
 let G_TOKEN = null;
 function loadGis() {
   if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
@@ -168,8 +168,13 @@ function fetchApi(cfg) {
       if (!Array.isArray(list)) throw new Error('응답에서 목록을 찾지 못했습니다. "목록 위치"에 목록이 들어 있는 항목 이름(예: data 또는 data.items)을 넣어 주세요.');
       if (!list.length) return [];
       if (Array.isArray(list[0])) return list;
-      const keys = [...new Set(list.flatMap(o => Object.keys(o || {})))];
-      return [keys, ...list.map(o => keys.map(k => o[k] == null ? '' : typeof o[k] === 'object' ? JSON.stringify(o[k]) : o[k]))];
+      // 시스템 API는 값이 안쪽에 들어 있는 경우가 많다 (예: fields.status.name) → 점으로 이어 붙인 열 이름으로 펼친다
+      const flat = (o, pre, out) => { Object.keys(o || {}).forEach(k => { const v = o[k], key = pre ? pre + '.' + k : k;
+        if (v && typeof v === 'object' && !Array.isArray(v) && key.split('.').length < 4) flat(v, key, out);
+        else out[key] = Array.isArray(v) ? v.map(x => (x && typeof x === 'object') ? (x.name || x.value || x.displayName || JSON.stringify(x)) : x).join(', ') : v; }); return out; };
+      const rows = list.map(o => flat(o, '', {}));
+      const keys = [...new Set(rows.flatMap(o => Object.keys(o)))];
+      return [keys, ...rows.map(o => keys.map(k => o[k] == null ? '' : o[k]))];
     });
 }
 function pullSource(src, cfg, keep) {
@@ -432,3 +437,62 @@ function afterSurveySave(s) {
   if (!CONN.google.clientId) return;
   syncForm(s).then(() => { render(); toast('저장하고 Google 폼에도 반영했습니다.'); }, e => { render(); toast('저장했지만 Google 폼에는 반영하지 못했습니다. ' + e.message); });
 }
+
+/* ───────── IT·총무 요청 현황: 시스템 API · 부서 공유 시트 ───────── */
+const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
+const DEPT_TAB = '준비 요청';
+function gsheet(url, opt) {
+  return googleToken().then(tk => fetch(url, Object.assign({}, opt, { headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' } })))
+    .then(r => r.json().catch(() => ({})).then(j => { if (!r.ok || j.error) throw new Error('Google 시트가 처리하지 못했습니다: ' + ((j.error && j.error.message) || r.status)); return j; }));
+}
+/* 중소기업용: IT·총무와 같이 쓰는 공유 시트를 만든다 (상태 칸은 대기·진행 중·완료·보류 중에서 고름) */
+async function createDeptSheet() {
+  const grid = [DEPT_HEAD, ...deptRows(S, TODAY)];
+  const ss = await gsheet(SHEETS_API, { method: 'POST', body: JSON.stringify({ properties: { title: '입사 준비 요청 (IT·총무 공유)', locale: 'ko_KR' }, sheets: [{ properties: { title: DEPT_TAB, gridProperties: { frozenRowCount: 1 } } }] }) });
+  const sid = ss.sheets[0].properties.sheetId;
+  await gsheet(`${SHEETS_API}/${ss.spreadsheetId}/values/${encodeURIComponent(DEPT_TAB + '!A1')}?valueInputOption=USER_ENTERED`, { method: 'PUT', body: JSON.stringify({ values: grid }) });
+  await gsheet(`${SHEETS_API}/${ss.spreadsheetId}:batchUpdate`, { method: 'POST', body: JSON.stringify({ requests: [
+    { repeatCell: { range: { sheetId: sid, startRowIndex: 0, endRowIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.95, green: 0.96, blue: 0.98 } } }, fields: 'userEnteredFormat(textFormat,backgroundColor)' } },
+    { setDataValidation: { range: { sheetId: sid, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 8, endColumnIndex: 9 }, rule: { condition: { type: 'ONE_OF_LIST', values: DEPT_STATES.map(v => ({ userEnteredValue: v })) }, showCustomUi: true, strict: false } } },
+    { setDataValidation: { range: { sheetId: sid, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 9, endColumnIndex: 10 }, rule: { condition: { type: 'DATE_IS_VALID' }, strict: false } } },
+    { autoResizeDimensions: { dimensions: { sheetId: sid, dimension: 'COLUMNS', startIndex: 0, endIndex: DEPT_HEAD.length } } },
+  ] }) });
+  CONN.deptSheet = { id: ss.spreadsheetId, url: ss.spreadsheetUrl, made: TODAY, added: TODAY };
+  CONN.sources.dept = { kind: 'sheet', url: ss.spreadsheetUrl, at: '' };
+  saveConn();
+  return grid.length - 1;
+}
+/* 새로 생긴 IT·총무 할 일만 시트 아래에 덧붙인다 (부서가 적은 내용은 건드리지 않음) */
+async function appendDeptSheet() {
+  const id = CONN.deptSheet.id;
+  const cur = await gsheet(`${SHEETS_API}/${id}/values/${encodeURIComponent(DEPT_TAB + '!A:A')}`);
+  const have = new Set((cur.values || []).map(r => r[0]));
+  const rows = deptRows(S, TODAY).filter(r => !have.has(r[0]));
+  if (rows.length) await gsheet(`${SHEETS_API}/${id}/values/${encodeURIComponent(DEPT_TAB + '!A1')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`, { method: 'POST', body: JSON.stringify({ values: rows }) });
+  CONN.deptSheet.added = TODAY; saveConn();
+  return rows.length;
+}
+function deptPanel() {
+  const ds = CONN.deptSheet;
+  const n = deptRows(S, TODAY).length;
+  return `<div class="dept-ways">
+    <section class="dept-way"><b>회사에 IT 요청 시스템이 있으면</b>
+      <p class="hint">헬프데스크·ServiceNow·Jira 같은 시스템의 API를 아래 <b>Google 시트·API로 연결 → 시스템 API</b>에 넣습니다. 처리 완료된 요청이 현황판에 바로 ✓로 반영됩니다.</p>
+      <div class="row-act"><button class="btn" data-act="dept-demo-api">예시 IT 시스템으로 시험해 보기</button></div></section>
+    <section class="dept-way"><b>시스템이 없으면 (중소기업): 부서 공유 시트</b>
+      <p class="hint">IT·총무와 같이 보는 Google 시트를 만들어, 담당자가 <b>상태 칸만 "완료"로</b> 바꾸면 반영됩니다. 지금 올라갈 할 일 ${n}건.</p>
+      ${ds ? `<div class="row-act"><a class="btn ghost" href="${esc(ds.url)}" target="_blank" rel="noopener">공유 시트 열기</a><button class="btn ghost" data-act="dept-append">새 할 일 시트에 추가</button></div><p class="hint">시트를 IT·총무 담당자에게 <b>편집자</b>로 공유하세요. 마지막으로 할 일을 추가한 날 ${D.md(ds.added)}.</p>`
+        : CONN.google.clientId ? `<div class="row-act"><button class="btn primary" data-act="dept-make">공유 시트 만들기</button><button class="btn ghost" data-act="sample" data-src="dept-form">양식 엑셀로 받기</button></div>`
+        : `<div class="row-act"><button class="btn" data-act="sample" data-src="dept-form">공유 시트 양식 받기 (엑셀)</button></div><p class="hint">받은 파일을 Google Drive에 올려 Google 시트로 열고, IT·총무와 공유한 뒤 그 주소를 아래 <b>Google 시트·API로 연결</b>에 붙여넣으세요. <a href="#connect">Google을 연결</a>하면 버튼 한 번으로 만들 수 있습니다.</p>`}
+    </section></div>`;
+}
+Object.assign(CONNECT_ACTS, {
+  'dept-make': b => busy(b, '만드는 중…', createDeptSheet().then(k => { render(); toast(`공유 시트를 만들었습니다 (${k}건). IT·총무 담당자에게 편집자로 공유하세요.`); })),
+  'dept-append': b => busy(b, '추가하는 중…', appendDeptSheet().then(k => { render(); toast(k ? `새 할 일 ${k}건을 시트에 추가했습니다.` : '시트에 추가할 새 할 일이 없습니다.'); })),
+  /* 예시 IT 요청 시스템: 실제 API 대신 같은 모양의 응답을 브라우저 안에서 만들어 '시스템 API' 연결 그대로 읽는다 */
+  'dept-demo-api': () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(sampleITApi(S, TODAY))], { type: 'application/json' }));
+    IMP = { src: 'dept' };
+    pullSource('dept', { kind: 'api', url, header: 'Authorization: Bearer demo-token', path: 'result' }, false).then(() => { if (IMP) IMP.file = '예시 IT 시스템 API'; render(); });
+  },
+});
