@@ -412,3 +412,18 @@ input, textarea, select, button { word-break: keep-all; overflow-wrap: break-wor
 .dept-way > b { display: block; font-size: 14px; margin-bottom: 4px; }
 .dept-way .hint { margin: 0 0 8px; }
 .dept-way .row-act { margin: 0 0 6px; }
+
+/* ── 가져오기 화면: 라벨형 문구 ── */
+.src-info dd { white-space: normal; }
+.src-info .does { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.src-info .does i, .tags i, .dept-way .tag { font-style: normal; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 6px; background: var(--line-2); color: var(--ink-2); white-space: nowrap; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 0 0 8px; }
+.tags i { font-weight: 500; color: var(--sub); }
+.dw-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dw-head b { font-size: 14px; }
+.dept-way .tag { background: var(--accent-soft); color: var(--accent); }
+.dw-list { margin: 0 0 10px; padding-left: 16px; font-size: 13px; color: var(--ink-2); }
+.dw-list li { margin: 2px 0; }
+.srcs .src .w-meta { white-space: normal; }
+.drop-req span, .alt span { text-wrap: balance; }
+.imp-log td, .imp-log th { white-space: nowrap; }

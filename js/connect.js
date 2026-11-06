@@ -192,22 +192,24 @@ function pullSource(src, cfg, keep) {
 
 function apiPanel(src) {
   const c = CONN.sources[src];
-  if (c) return `<div class="linked"><div><b>${c.kind === 'api' ? 'API' : 'Google 시트'}에 연결됨</b><span class="w-meta">${esc(c.url.length > 60 ? c.url.slice(0, 57) + '…' : c.url)}${c.at ? ' · 마지막 ' + D.md(c.at) : ''}</span></div>
-    <div class="row-act"><button class="btn primary" data-act="api-pull" data-src="${src}">지금 가져오기</button><button class="btn ghost" data-act="api-unlink" data-src="${src}">연결 끊기</button></div></div>`;
+  if (c) return `<div class="linked"><div><b>${c.kind === 'api' ? 'API' : 'Google 시트'} 연동됨</b><span class="w-meta">${esc(c.url.length > 60 ? c.url.slice(0, 57) + '…' : c.url)}${c.at ? ' · 마지막 ' + D.md(c.at) : ''}</span></div>
+    <div class="row-act"><button class="btn primary" data-act="api-pull" data-src="${src}">지금 가져오기</button><button class="btn ghost" data-act="api-unlink" data-src="${src}">연동 해제</button></div></div>`;
   return '';
 }
 function apiBox(src) {
   return `<div id="api-box" class="paste-box api-box" hidden>
-    <div class="seg-pick" role="radiogroup" aria-label="연결 방식"><label class="ch on"><input type="radio" name="api-kind" value="sheet" checked>Google 시트</label><label class="ch"><input type="radio" name="api-kind" value="api">시스템 API (JSON)</label></div>
-    <label class="fld"><span>주소</span><input id="api-url" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
-    <p class="hint api-sheet">시트를 "링크가 있는 모든 사용자"로 공유했다면 바로 읽습니다. 공유하지 않은 시트는 <a href="#connect">Google 연결</a> 후 읽을 수 있습니다.</p>
+    <div class="seg-pick" role="radiogroup" aria-label="연동 방식"><label class="ch on"><input type="radio" name="api-kind" value="sheet" checked>Google 시트</label><label class="ch"><input type="radio" name="api-kind" value="api">시스템 API (JSON)</label></div>
+    <label class="fld"><span class="api-url-label">시트 URL</span><input id="api-url" placeholder="https://docs.google.com/spreadsheets/d/…"></label>
+    <p class="tags api-sheet"><i>공개 링크 시트: 바로 읽기</i><i>비공개 시트: <a href="#connect">Google 연동</a> 필요</i></p>
     <div class="api-only" hidden>
-      <label class="fld"><span>요청 헤더 <span class="hint">(한 줄에 하나)</span></span><textarea id="api-header" rows="2" placeholder="Authorization: Bearer 발급받은-키"></textarea></label>
-      <label class="fld"><span>목록 위치 <span class="hint">(응답이 바로 목록이면 비워 두기)</span></span><input id="api-path" placeholder="data.items"></label>
-      <p class="hint">회사 시스템이 브라우저 호출을 막아 두었다면(CORS) 읽을 수 없습니다. 그럴 땐 시스템에서 Google 시트로 내보내 연결하세요.</p>
+      <div class="fld-2">
+        <label class="fld"><span>인증 헤더</span><textarea id="api-header" rows="2" placeholder="Authorization: Bearer 발급받은-키"></textarea></label>
+        <label class="fld"><span>목록 경로</span><input id="api-path" placeholder="예: result, data.items"></label>
+      </div>
+      <p class="tags"><i>응답이 바로 목록이면 경로 비움</i><i>브라우저 호출(CORS) 차단 시: 시트로 내보내 연동</i></p>
     </div>
-    <label class="check"><input type="checkbox" id="api-keep" checked> 이 연결을 저장해서 다음부터 "지금 가져오기" 한 번으로 받기</label>
-    <div class="row-act"><button class="btn primary" data-act="api-load" data-src="${src}">불러오기</button></div>
+    <label class="check"><input type="checkbox" id="api-keep" checked> 연동 저장 <span class="hint nw">(다음부터 1클릭 갱신)</span></label>
+    <div class="row-act"><button class="btn primary" data-act="api-load" data-src="${src}">가져오기</button></div>
   </div>`;
 }
 
@@ -275,7 +277,8 @@ document.addEventListener('change', e => {
     const api = e.target.value === 'api';
     document.querySelectorAll('[name=api-kind]').forEach(x => x.closest('.ch').classList.toggle('on', x.checked));
     $('.api-only').hidden = !api; $('.api-sheet').hidden = api;
-    $('#api-url').placeholder = api ? 'https://hr.회사.com/api/v1/employees?status=new' : 'https://docs.google.com/spreadsheets/d/…';
+    $('#api-url').placeholder = api ? 'https://helpdesk.회사.com/api/requests?type=onboarding' : 'https://docs.google.com/spreadsheets/d/…';
+    $('.api-url-label').textContent = api ? 'API URL' : '시트 URL';
   }
 });
 
@@ -476,18 +479,18 @@ function deptPanel() {
   const ds = CONN.deptSheet;
   const n = deptRows(S, TODAY).length;
   return `<div class="dept-ways">
-    <section class="dept-way"><b>회사에 IT 요청 시스템이 있으면</b>
-      <p class="hint">헬프데스크·ServiceNow·Jira 같은 시스템의 API를 아래 <b>Google 시트·API로 연결 → 시스템 API</b>에 넣습니다. 처리 완료된 요청이 현황판에 바로 ✓로 반영됩니다.</p>
-      <div class="row-act"><button class="btn" data-act="dept-demo-api">예시 IT 시스템으로 시험해 보기</button></div></section>
-    <section class="dept-way"><b>시스템이 없으면 (중소기업): 부서 공유 시트</b>
-      <p class="hint">IT·총무와 같이 보는 Google 시트를 만들어, 담당자가 <b>상태 칸만 "완료"로</b> 바꾸면 반영됩니다. 지금 올라갈 할 일 ${n}건.</p>
-      ${ds ? `<div class="row-act"><a class="btn ghost" href="${esc(ds.url)}" target="_blank" rel="noopener">공유 시트 열기</a><button class="btn ghost" data-act="dept-append">새 할 일 시트에 추가</button></div><p class="hint">시트를 IT·총무 담당자에게 <b>편집자</b>로 공유하세요. 마지막으로 할 일을 추가한 날 ${D.md(ds.added)}.</p>`
-        : CONN.google.clientId ? `<div class="row-act"><button class="btn primary" data-act="dept-make">공유 시트 만들기</button><button class="btn ghost" data-act="sample" data-src="dept-form">양식 엑셀로 받기</button></div>`
-        : `<div class="row-act"><button class="btn" data-act="sample" data-src="dept-form">공유 시트 양식 받기 (엑셀)</button></div><p class="hint">받은 파일을 Google Drive에 올려 Google 시트로 열고, IT·총무와 공유한 뒤 그 주소를 아래 <b>Google 시트·API로 연결</b>에 붙여넣으세요. <a href="#connect">Google을 연결</a>하면 버튼 한 번으로 만들 수 있습니다.</p>`}
+    <section class="dept-way"><div class="dw-head"><b>IT 시스템 연동 (API)</b><span class="tag">대기업·중견</span></div>
+      <ul class="dw-list"><li>ServiceNow · Jira · 사내 헬프데스크</li><li>처리 완료 시 자동 ✓</li></ul>
+      <div class="row-act"><button class="btn" data-act="dept-demo-api">예시 데이터로 테스트</button></div></section>
+    <section class="dept-way"><div class="dw-head"><b>부서 공유 시트</b><span class="tag">중소기업</span></div>
+      <ul class="dw-list"><li>IT·총무가 상태만 "완료"로 변경</li><li>대상 할 일 <span class="nw">${n}건</span></li>${ds ? `<li>마지막 추가 <span class="nw">${D.md(ds.added)}</span> · 담당자에게 편집 권한 공유</li>` : ''}</ul>
+      ${ds ? `<div class="row-act"><a class="btn ghost" href="${esc(ds.url)}" target="_blank" rel="noopener">시트 열기</a><button class="btn ghost" data-act="dept-append">새 할 일 추가</button></div>`
+        : CONN.google.clientId ? `<div class="row-act"><button class="btn primary" data-act="dept-make">시트 생성</button><button class="btn ghost" data-act="sample" data-src="dept-form">양식 다운로드 (.xlsx)</button></div>`
+        : `<div class="row-act"><button class="btn" data-act="sample" data-src="dept-form">양식 다운로드 (.xlsx)</button></div><p class="tags"><i>Drive 업로드 → 시트로 열기 → 공유 → 아래 시트 연동</i><i><a href="#connect">Google 연동</a> 시 1클릭 생성</i></p>`}
     </section></div>`;
 }
 Object.assign(CONNECT_ACTS, {
-  'dept-make': b => busy(b, '만드는 중…', createDeptSheet().then(k => { render(); toast(`공유 시트를 만들었습니다 (${k}건). IT·총무 담당자에게 편집자로 공유하세요.`); })),
+  'dept-make': b => busy(b, '만드는 중…', createDeptSheet().then(k => { render(); toast(`공유 시트를 만들었습니다 (${k}건). IT·총무 담당자에게 편집 권한으로 공유하세요.`); })),
   'dept-append': b => busy(b, '추가하는 중…', appendDeptSheet().then(k => { render(); toast(k ? `새 할 일 ${k}건을 시트에 추가했습니다.` : '시트에 추가할 새 할 일이 없습니다.'); })),
   /* 예시 IT 요청 시스템: 실제 API 대신 같은 모양의 응답을 브라우저 안에서 만들어 '시스템 API' 연결 그대로 읽는다 */
   'dept-demo-api': () => {

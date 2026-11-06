@@ -640,25 +640,25 @@ function viewRespond(dv, token) {
 
 /* ═════════ 데이터 가져오기 ═════════ */
 const SOURCES = {
-  ats: { name: '채용 합격자 명단', from: '채용 시스템(ATS) → 합격자 목록 → 엑셀 내려받기', who: '채용 담당자에게 받거나 직접 내려받기', when: '주 1회, 입사일 변동이 있을 때', match: '이메일',
-    does: '새 입사자 추가, 입사일 변경 반영(남은 마감일 다시 계산), 입사 포기 처리',
+  ats: { name: '채용 합격자 명단', short: '채용 시스템(ATS)', from: '채용 시스템(ATS) > 합격자 목록 > 엑셀 다운로드', who: '채용 담당', when: '주 1회 · 입사일 변동 시', match: '이메일',
+    does: ['신규 입사자 추가', '입사일 변경', '입사 포기'],
     fields: [['name', '이름', 1, ['이름', '성명', '지원자명', '지원자']], ['email', '이메일', 1, ['이메일', 'email', 'e-mail', '메일']], ['start', '입사일', 1, ['입사일', '입사 예정일', '입사예정일', '입사 일자']],
       ['type', '채용 구분', 0, ['전형', '채용구분', '채용 구분', '구분']], ['cohort', '기수', 0, ['기수', '차수']], ['org', '부서', 1, ['배치부서', '부서', '소속', '배치 부서']],
       ['job', '직무', 0, ['직무', '모집직무', '포지션']], ['rank', '직급', 0, ['직급', '직위']], ['site', '근무지', 0, ['근무지', '근무 장소']],
       ['mgr', '매니저 이메일', 0, ['현업 담당자 이메일', '매니저 이메일', '팀장 이메일', '담당자 이메일']], ['state', '상태', 0, ['합격자 상태', '상태', '진행 상태', '입사 여부']]] },
-  hris: { name: '인사 기본 정보', from: '인사 시스템(HRIS) → 인사 기본 정보 조회 → 엑셀 내려받기', who: '인사 담당 (본인)', when: '주 1회', match: '이름 + 입사일',
-    does: '사번 연결, 직급 갱신, 퇴직자 처리(남은 할 일 종료)',
+  hris: { name: '인사 기본 정보', short: '인사 시스템(HRIS)', from: '인사 시스템(HRIS) > 인사 기본 정보 > 엑셀 다운로드', who: '인사 담당(본인)', when: '주 1회', match: '사번 → 없으면 이름 + 입사일',
+    does: ['사번 연결', '직급 갱신', '퇴직 처리'],
     fields: [['empNo', '사번', 1, ['사번', '사원번호', '직원번호']], ['name', '이름', 1, ['성명', '이름']], ['start', '입사일', 1, ['입사일', '그룹입사일', '입사 일자']],
       ['org', '소속', 0, ['소속', '부서']], ['rank', '직급', 0, ['직급', '직위']], ['state', '재직 구분', 0, ['재직구분', '재직 구분', '재직상태', '상태']], ['leave', '퇴직일', 0, ['퇴직일', '퇴사일']]] },
-  lms: { name: '교육 수료 현황', from: 'LMS → 과정별 수료 현황 → 엑셀 내려받기', who: '교육 담당자에게 받거나 직접 내려받기', when: '주 1회', match: '사번 + 과정 코드',
-    does: '의무·법정 교육 항목을 수료일로 완료 처리',
+  lms: { name: '교육 수료 현황', short: '교육 시스템(LMS)', from: '교육 시스템(LMS) > 과정별 수료 현황 > 엑셀 다운로드', who: '교육 담당', when: '주 1회', match: '사번 + 과정 코드',
+    does: ['의무·법정 교육 수료'],
     fields: [['empNo', '사번', 1, ['사번', '사원번호']], ['course', '과정 코드', 1, ['과정코드', '과정 코드', 'course']], ['doneAt', '수료일', 0, ['수료일', '이수일', '완료일']], ['result', '수료 여부', 1, ['수료여부', '이수여부', '수료 여부', '결과']]] },
-  survey: { name: '설문 응답 (구글 폼·MS Forms)', from: '구글 폼 → 응답 → 스프레드시트에서 보기 → 다운로드(.xlsx/.csv)', who: '본인', when: '구글 폼으로 설문을 돌렸을 때', match: '이메일 (매니저 설문은 이메일 + 입사자 이름)',
-    does: '응답을 입사자에게 연결하고 결과에 반영',
+  survey: { name: '설문 응답', short: 'Google 폼', from: 'Google 폼 > 응답 > 시트 또는 엑셀 다운로드', who: 'HR(본인)', when: '설문 마감 후', match: '이메일 (매니저 설문: + 입사자 이름)',
+    does: ['응답 → 입사자 연결', '설문 결과'],
     fields: [['email', '이메일', 1, ['이메일 주소', '이메일', 'email']], ['at', '제출 시각', 0, ['타임스탬프', 'timestamp', '제출 시각', '제출 시간', '완료 시간']], ['hire', '입사자 이름 (매니저 설문)', 0, ['입사자 이름', '입사자', '대상자']]] },
 };
-SOURCES.dept = { name: 'IT·총무 요청 현황', from: 'IT 요청 시스템(헬프데스크) API, 또는 IT·총무와 같이 쓰는 공유 Google 시트', who: 'IT·총무 담당 (처리 기록)', when: '수시 · 연결해 두면 "지금 가져오기" 한 번', match: '할 일 ID, 없으면 입사자 이메일 + 요청 종류',
-  does: '처리 완료된 요청을 현황판에서 완료(✓)로 표시, 보류 사유는 메모(?)로',
+SOURCES.dept = { name: 'IT·총무 요청 현황', short: 'IT 시스템 · 공유 시트', from: 'IT 요청 시스템 API 또는 부서 공유 시트', who: 'IT·총무', when: '수시 · 연동 시 1클릭', match: '할 일 ID → 없으면 이메일 + 요청 종류',
+  does: ['완료 → ✓', '보류 → 메모'],
   fields: [['email', '입사자 이메일', 1, ['입사자 이메일', '대상자 이메일', '이메일', 'u_new_hire_email', 'requested_for.email', 'fields.requester.emailAddress', 'email']],
     ['item', '요청 종류', 1, ['요청 종류', '요청 유형', '항목', '카테고리', 'u_category', 'category', 'fields.issuetype.name', 'short_description', 'fields.summary', 'summary']],
     ['status', '상태', 1, ['상태', '처리 상태', 'state', 'status', 'fields.status.name', 'status.name']],
@@ -686,16 +686,16 @@ function setupHead(cur) {
 function viewImport(dv, src) {
   if (!SOURCES[src]) src = '';
   const cards = Object.keys(SOURCES).map(k => { const m = SOURCES[k], at = S.lastImport[k];
-    return `<a class="src ${k === src ? 'on' : ''}" href="#import/${k}"><b>${m.name}</b><span class="w-meta">${esc(m.from.split(' → ')[0])} · ${at ? D.md(at) + ' 가져옴' : '가져온 적 없음'}${CONN.sources[k] ? ' · 연결됨' : ''}</span></a>`; }).join('');
+    return `<a class="src ${k === src ? 'on' : ''}" href="#import/${k}"><b>${m.name}</b><span class="w-meta">${esc(m.short)} · ${at ? D.md(at) + ' 가져옴' : '가져온 적 없음'}${CONN.sources[k] ? ' · 연동됨' : ''}</span></a>`; }).join('');
   return `
   ${setupHead('import')}
-  <header class="page-head"><div><p class="sub">이미 쓰고 있는 시스템에서 엑셀을 내려받아 올리거나, Google 시트·API로 연결해 바로 받아옵니다. 열 이름이 달라도 맞춰서 읽습니다.</p></div></header>
+  <header class="page-head"><div><p class="sub">엑셀 업로드 또는 시트·API 연동 · 열 이름이 달라도 자동 매칭</p></div></header>
   <div class="import-grid">
     <nav class="srcs" aria-label="가져올 데이터">${cards}</nav>
-    <section class="panel">${src ? importPanel(src) : `<p class="empty">왼쪽에서 가져올 데이터를 고르세요.</p>`}</section>
+    <section class="panel">${src ? importPanel(src) : `<p class="empty">왼쪽에서 데이터를 선택하세요.</p>`}</section>
   </div>
   <section class="panel"><div class="panel-head"><h2>가져온 기록</h2></div>
-    <table class="tbl compact"><thead><tr><th>날짜</th><th>데이터</th><th>파일</th><th>결과</th></tr></thead><tbody>${S.imports.slice().reverse().slice(0, 12).map(x => `<tr><td>${D.md(x.at)}</td><td>${SOURCES[x.source] ? SOURCES[x.source].name : x.source}</td><td>${esc(x.file)}</td><td>${esc(x.summary)}</td></tr>`).join('')}</tbody></table></section>`;
+    <div class="scroll"><table class="tbl compact imp-log"><thead><tr><th>날짜</th><th>데이터</th><th>파일</th><th>결과</th></tr></thead><tbody>${S.imports.slice().reverse().slice(0, 12).map(x => `<tr><td>${D.md(x.at)}</td><td>${SOURCES[x.source] ? SOURCES[x.source].name : x.source}</td><td>${esc(x.file)}</td><td>${esc(x.summary)}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 
 function importPanel(src) {
@@ -704,25 +704,25 @@ function importPanel(src) {
   const step = !IMP.rows ? 1 : !IMP.plan ? 2 : 3;
   return `
   <div class="panel-head"><h2>${m.name}</h2></div>
-  <dl class="kv wide"><dt>어디서</dt><dd>${esc(m.from)}</dd><dt>누가</dt><dd>${esc(m.who)}</dd><dt>언제</dt><dd>${esc(m.when)}</dd><dt>같은 사람 판단</dt><dd>${esc(m.match)}</dd><dt>반영되는 것</dt><dd>${esc(m.does)}</dd></dl>
-  <ol class="steps"><li class="${step >= 1 ? 'on' : ''}">파일 올리기</li><li class="${step >= 2 ? 'on' : ''}">열 맞추기</li><li class="${step >= 3 ? 'on' : ''}">바뀌는 내용 확인</li></ol>
-  ${src === 'survey' ? `<label class="fld inline"><span>어느 설문의 응답인가요?</span><select data-act="imp-survey">${S.surveys.map(s => `<option value="${s.id}" ${s.id === IMP.surveyId ? 'selected' : ''}>${esc(s.name)} (${s.audience})</option>`).join('')}</select></label>` : ''}
+  <dl class="kv wide src-info"><dt>출처</dt><dd>${esc(m.from)}</dd><dt>기록 주체</dt><dd>${esc(m.who)}</dd><dt>갱신</dt><dd>${esc(m.when)}</dd><dt>매칭 기준</dt><dd>${esc(m.match)}</dd><dt>반영 결과</dt><dd class="does">${m.does.map(d => `<i>${esc(d)}</i>`).join('')}</dd></dl>
+  <ol class="steps"><li class="${step >= 1 ? 'on' : ''}">업로드</li><li class="${step >= 2 ? 'on' : ''}">열 매칭</li><li class="${step >= 3 ? 'on' : ''}">변경 사항 검토</li></ol>
+  ${src === 'survey' ? `<label class="fld inline"><span>설문 선택</span><select data-act="imp-survey">${S.surveys.map(s => `<option value="${s.id}" ${s.id === IMP.surveyId ? 'selected' : ''}>${esc(s.name)} (${s.audience})</option>`).join('')}</select></label>` : ''}
   ${step === 1 ? `
     ${apiPanel(src)}${src === 'dept' ? deptPanel() : ''}
-    <p class="drop-req">꼭 있어야 하는 열 ${SOURCES[src].fields.filter(f => f[2]).map(f => `<i>${esc(f[1])}</i>`).join('')}<span>열 이름이 달라도 다음 단계에서 맞출 수 있습니다.</span></p>
+    <p class="drop-req">필수 열 ${SOURCES[src].fields.filter(f => f[2]).map(f => `<i>${esc(f[1])}</i>`).join('')}<span>열 이름이 달라도 매칭 가능</span></p>
     <label class="drop" id="drop" for="imp-file">
       <input type="file" id="imp-file" class="sr" accept=".xlsx,.xls,.csv,.tsv,.txt">
       <svg class="drop-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 18v-6M9 14.5 12 11.5l3 3"/></svg>
-      <span class="drop-title">엑셀 파일을 여기에 끌어다 놓으세요</span>
-      <span class="drop-sub">또는 <u>눌러서 파일 고르기</u> <span class="nw">(.xlsx, .csv)</span></span>
+      <span class="drop-title">파일을 끌어다 놓기</span>
+      <span class="drop-sub">또는 <u>파일 선택</u> <span class="nw">(.xlsx, .csv)</span></span>
     </label>
     <div class="drop-alt">
-      <button class="alt" data-act="sample" data-src="${src}"><b>샘플 엑셀 받기</b><span>화면 속 데이터와 맞물린 파일이라 그대로 올리면 실제로 반영됩니다.</span></button>
-      <button class="alt" data-act="paste-toggle" aria-expanded="false" aria-controls="paste-box"><b>엑셀에서 복사해 붙여넣기</b><span>파일 없이 엑셀 표를 복사해서 바로 넣습니다.</span></button>
-      <button class="alt" data-act="api-toggle" aria-expanded="false" aria-controls="api-box"><b>Google 시트·API로 연결</b><span>한 번 연결해 두면 다음부터 버튼 한 번으로 받아옵니다.</span></button>
+      <button class="alt" data-act="sample" data-src="${src}"><b>샘플 다운로드</b><span>화면 데이터 기준</span></button>
+      <button class="alt" data-act="paste-toggle" aria-expanded="false" aria-controls="paste-box"><b>붙여넣기</b><span>엑셀 표 복사</span></button>
+      <button class="alt" data-act="api-toggle" aria-expanded="false" aria-controls="api-box"><b>시트·API 연동</b><span>저장 후 1클릭 갱신</span></button>
     </div>
     ${apiBox(src)}
-    <div id="paste-box" class="paste-box" hidden><textarea id="imp-paste" rows="6" placeholder="엑셀에서 머리글 줄까지 선택해 복사(Ctrl+C)한 뒤&#10;여기에 붙여넣으세요(Ctrl+V)"></textarea><div class="row-act"><button class="btn primary" data-act="imp-paste">붙여넣은 내용 읽기</button></div></div>`
+    <div id="paste-box" class="paste-box" hidden><textarea id="imp-paste" rows="6" placeholder="엑셀에서 머리글 줄까지 선택해 복사(Ctrl+C)한 뒤&#10;여기에 붙여넣으세요(Ctrl+V)"></textarea><div class="row-act"><button class="btn primary" data-act="imp-paste">가져오기</button></div></div>`
   : step === 2 ? mappingStep(src) : planStep(src)}`;
 }
 
@@ -730,11 +730,11 @@ function mappingStep(src) {
   const m = SOURCES[src];
   const fields = m.fields.concat(src === 'survey' ? S.surveys.find(s => s.id === IMP.surveyId).qs.map(q => ['q:' + q.q, '문항: ' + q.text, 0, [q.text]]) : []);
   if (!IMP.map) IMP.map = guessMap(fields, IMP.head);
-  return `<p class="p"><b>${esc(IMP.file)}</b> · ${IMP.rows.length}줄. 각 항목이 파일의 어느 열인지 확인하세요. 자동으로 맞춘 결과입니다.</p>
-    <table class="tbl compact map"><thead><tr><th>대시보드 항목</th><th>파일의 열</th><th>첫 줄 값</th></tr></thead><tbody>
+  return `<p class="p"><b>${esc(IMP.file)}</b> · ${IMP.rows.length}줄 · <span class="nw">자동 매칭 결과</span></p>
+    <table class="tbl compact map"><thead><tr><th>항목</th><th>파일 열</th><th>첫 줄 값</th></tr></thead><tbody>
     ${fields.map(([k, l, req]) => { const i = IMP.map[k]; return `<tr><th scope="row">${esc(l)}${req ? ' <span class="late">*</span>' : ''}</th><td><select data-map="${esc(k)}"><option value="">— 없음 —</option>${IMP.head.map((h, j) => `<option value="${j}" ${i === j ? 'selected' : ''}>${esc(h)}</option>`).join('')}</select></td><td class="muted">${i === undefined || i === '' ? '' : esc(fmtCell(IMP.rows[0] && IMP.rows[0][i]))}</td></tr>`; }).join('')}
     </tbody></table>
-    <div class="row-act"><button class="btn ghost" data-act="imp-reset">다른 파일</button><span class="grow"></span><button class="btn primary" data-act="imp-plan">바뀌는 내용 보기</button></div>`;
+    <div class="row-act"><button class="btn ghost" data-act="imp-reset">처음으로</button><span class="grow"></span><button class="btn primary" data-act="imp-plan">변경 사항 검토</button></div>`;
 }
 const fmtCell = v => (v instanceof Date ? D.parse(v) : v);
 function guessMap(fields, head) {
@@ -753,20 +753,20 @@ function guessMap(fields, head) {
 function planStep(src) {
   const p = IMP.plan;
   const sec = (title, list, fn, cls) => list.length ? `<details ${list.length <= 8 ? 'open' : ''} class="pl ${cls || ''}"><summary><b>${title}</b> ${list.length}건</summary><ul>${list.map(fn).join('')}</ul></details>` : '';
-  return `<p class="p">아직 반영되지 않았습니다. 아래 내용을 확인하고 <b>반영하기</b>를 누르세요.</p>
-    ${sec('새 입사자', p.add || [], x => `<li>${esc(x.name)} · ${esc(orgName(x.org))} · ${D.md(x.start)} 입사 <span class="muted">할 일 자동 생성</span></li>`, 'add')}
-    ${sec('입사일 변경', p.moved || [], x => `<li>${esc(x.h.name)} · ${D.md(x.h.start)} → <b>${D.md(x.start)}</b> <span class="muted">남은 할 일 마감일 다시 계산</span></li>`, 'chg')}
-    ${sec('입사 포기', p.cancel || [], x => `<li>${esc(x.h.name)} · ${D.md(x.h.start)} 입사 예정이었음 <span class="muted">남은 할 일 종료 · IT·총무에 취소 알림 필요</span></li>`, 'bad')}
+  return `<p class="p">반영 전 · 확인 후 <b>반영</b></p>
+    ${sec('새 입사자', p.add || [], x => `<li>${esc(x.name)} · ${esc(orgName(x.org))} · ${D.md(x.start)} 입사 <span class="muted">할 일 생성</span></li>`, 'add')}
+    ${sec('입사일 변경', p.moved || [], x => `<li>${esc(x.h.name)} · ${D.md(x.h.start)} → <b>${D.md(x.start)}</b> <span class="muted">기한 재계산</span></li>`, 'chg')}
+    ${sec('입사 포기', p.cancel || [], x => `<li>${esc(x.h.name)} · ${D.md(x.h.start)} 입사 예정이었음 <span class="muted">할 일 종료 · IT·총무 취소 알림 필요</span></li>`, 'bad')}
     ${sec('사번 연결', p.emp || [], x => `<li>${esc(x.h.name)} → ${esc(x.empNo)}</li>`, 'add')}
     ${sec('퇴직 처리', p.leave || [], x => `<li>${esc(x.h.name)} · ${D.md(x.leave)} 퇴직 <span class="muted">남은 할 일 종료</span></li>`, 'bad')}
     ${sec('정보 갱신', p.update || [], x => `<li>${esc(x.h.name)} · ${esc(x.what)}</li>`)}
     ${sec('교육 수료 반영', p.done || [], x => `<li>${esc(x.h.name)} · ${esc(COURSES[x.t.link] || x.t.link)} · ${D.md(x.at)} 수료</li>`, 'add')}
     ${sec('설문 응답 반영', p.answers || [], x => `<li>${esc(x.h.name)} · ${D.md(x.at)} 응답</li>`, 'add')}
     ${sec('IT·총무 처리 완료', p.deptDone || [], x => `<li>${esc(x.h.name)} · ${esc(shortTitle(x.t.title))} · ${D.md(x.at)} 처리${x.ticket ? ` <span class="muted">${esc(x.ticket)}</span>` : ''}</li>`, 'add')}
-    ${sec('보류·사유 (메모로 남김)', p.deptMemo || [], x => `<li>${esc(x.h.name)} · ${esc(shortTitle(x.t.title))} · ${esc(x.memo)} <span class="muted">${esc(x.status)}</span></li>`, 'chg')}
+    ${sec('보류 → 메모', p.deptMemo || [], x => `<li>${esc(x.h.name)} · ${esc(shortTitle(x.t.title))} · ${esc(x.memo)} <span class="muted">${esc(x.status)}</span></li>`, 'chg')}
     ${sec('건너뜀', p.skip || [], x => `<li>${esc(x.row)} <span class="muted">${esc(x.why)}</span></li>`, 'skip')}
     ${p.same ? `<p class="hint">바뀐 것이 없는 줄 ${p.same}건</p>` : ''}
-    <div class="row-act"><button class="btn ghost" data-act="imp-back">열 다시 맞추기</button><span class="grow"></span><button class="btn primary" data-act="imp-apply" ${p.count ? '' : 'disabled'}>반영하기 (${p.count}건)</button></div>`;
+    <div class="row-act"><button class="btn ghost" data-act="imp-back">열 매칭으로</button><span class="grow"></span><button class="btn primary" data-act="imp-apply" ${p.count ? '' : 'disabled'}>반영 (${p.count}건)</button></div>`;
 }
 
 function bindImport() {
